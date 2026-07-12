@@ -1,0 +1,10 @@
+Game: Deltarune
+Subject: Fonts
+Copyright: Toby Fox
+Sprite Ripper: Random Talking Bush
+Hosting Permissions: The Spriters Resource
+                     Sprite Database
+Notes: Numbers in brackets signify how much overlap the symbols have
+       compared to the ones adjacent to it. For example, "[-1, +2]"
+       implies that one pixel from the left overlaps the previous
+       letter, and its two rightmost pixels overlap the next one.

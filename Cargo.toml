@@ -15,6 +15,7 @@ bevy = { version = "0.19", default-features = false, features = [
     "multi_threaded",
     "x11",
     "webgl2",
+    "debug",
 ] }
 # Set max log levels. This helps avoid unwanted low-severity log spam, which can affect performance.
 log = { version = "0.4", features = [

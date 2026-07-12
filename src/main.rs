@@ -6,6 +6,7 @@ use bevy::{
 use rand::RngExt;
 
 mod fabrik;
+mod text;
 
 fn main() -> AppExit {
     App::new()
@@ -76,6 +77,12 @@ fn spawn_gaster(
         Transform::from_translation(Vec3::new(-140., 20., 2.)),
         Sprite::from_atlas_image(image, TextureAtlas { layout, index: 0 }),
     ));
+
+    commands.spawn_scene(bsn! {
+        text::Text("* Aim with ? ? and ? ? !\n* Fire with ? !")
+        Transform
+        Visibility::Visible
+    });
 }
 
 fn spawn_kawkaw(
@@ -103,8 +110,38 @@ fn spawn_kawkaw(
     );
     let body_layout = texture_atlas_layouts.add(body_layout);
 
+    // commands.spawn((
+    //     Transform::from_translation(Vec3::Z * 2.),
+    //     Sprite::from_atlas_image(
+    //         head_image,
+    //         TextureAtlas {
+    //             layout: head_layout,
+    //             index: 0,
+    //         },
+    //     ),
+    // ));
+
+    // for i in 0..5 {
+    //     commands.spawn((
+    //         Transform::from_translation(Vec3::new(i as f32 * 9., i as f32 * -7., i as f32 * 3.)),
+    //         Sprite::from_atlas_image(
+    //             body_image.clone(),
+    //             TextureAtlas {
+    //                 layout: body_layout.clone(),
+    //                 index: 0,
+    //             },
+    //         ),
+    //     ));
+    // }
+
+    let nodes = commands.spawn(fabrik::Nodes::new(10)).id();
+
     commands.spawn((
-        Transform::from_translation(Vec3::Z * 2.),
+        fabrik::Node(nodes, 9, |transform, translation, translation_next| {
+            transform.translation.x = translation.x;
+            transform.translation.y = translation.y;
+        }),
+        Transform::from_translation(Vec3::new(0., 0., 0.)),
         Sprite::from_atlas_image(
             head_image,
             TextureAtlas {
@@ -114,9 +151,13 @@ fn spawn_kawkaw(
         ),
     ));
 
-    for i in 0..5 {
+    for i in 0..9 {
         commands.spawn((
-            Transform::from_translation(Vec3::new(i as f32 * 9., i as f32 * -7., i as f32 * 3.)),
+            fabrik::Node(nodes, i, |transform, translation, translation_next| {
+                transform.translation.x = translation.x;
+                transform.translation.y = translation.y;
+            }),
+            Transform::from_translation(Vec3::new(0., 0., i as f32 * 3.)),
             Sprite::from_atlas_image(
                 body_image.clone(),
                 TextureAtlas {
@@ -126,25 +167,6 @@ fn spawn_kawkaw(
             ),
         ));
     }
-
-    // let mesh = meshes.add(Rectangle::new(1.0, 1.0));
-
-    // let material = materials.add(StandardMaterial {
-    //     base_color_texture: Some(asset_server.load("kawkaw_all.png")),
-    //     perceptual_roughness: 1.0,
-    //     alpha_mode: AlphaMode::Mask(0.5),
-    //     cull_mode: None,
-    //     ..default()
-    // });
-
-    // let mut transform = Transform::from_xyz(-2.2, 0.5, 1.0);
-    // transform.rotation = camera_transform.rotation;
-    // commands
-    //     .spawn_scene(bsn! {
-    //         Mesh3d(mesh)
-    //         MeshMaterial3d<StandardMaterial>(material)
-    //     })
-    //     .insert(transform);
 }
 
 fn spawn_ocean(
