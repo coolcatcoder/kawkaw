@@ -1,10 +1,12 @@
 use bevy::{
     camera::{RenderTarget, ScalingMode},
+    color::palettes::css::{BLACK, DARK_BLUE},
     prelude::*,
     render::render_resource::TextureFormat,
 };
 use rand::RngExt;
 
+mod battle;
 mod fabrik;
 mod text;
 
@@ -13,6 +15,7 @@ fn main() -> AppExit {
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             fabrik::plugin,
+            battle::plugin,
         ))
         .add_systems(
             Startup,
@@ -39,6 +42,10 @@ fn spawn_camera(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     // Camera 2d
     commands.spawn((
         Camera2d,
+        Camera {
+            clear_color: ClearColorConfig::Custom(BLACK.into()),
+            ..default()
+        },
         Msaa::Off,
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: ScalingMode::FixedVertical {
@@ -56,6 +63,10 @@ fn spawn_camera(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     );
     commands.spawn((
         Camera3d::default(),
+        Camera {
+            clear_color: ClearColorConfig::Custom(DARK_BLUE.into()),
+            ..default()
+        },
         camera_transform,
         RenderTarget::Image(image.clone().into()),
         Msaa::Off,
@@ -77,12 +88,6 @@ fn spawn_gaster(
         Transform::from_translation(Vec3::new(-140., 20., 2.)),
         Sprite::from_atlas_image(image, TextureAtlas { layout, index: 0 }),
     ));
-
-    commands.spawn_scene(bsn! {
-        text::Text("* Aim with ? ? and ? ? !\n* Fire with ? !")
-        Transform
-        Visibility::Visible
-    });
 }
 
 fn spawn_kawkaw(

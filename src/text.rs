@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 #[derive(Component)]
+#[require(Visibility::Visible)]
 pub struct Text;
 
 impl FromTemplate for Text {
@@ -38,7 +39,7 @@ impl Template for TextTemplate {
             ));
 
             context.entity.with_child((
-                Transform::from_translation(Vec3::new(x, y, 5.)),
+                Transform::from_translation(Vec3::new(x, y, 50.)),
                 Sprite::from_image(image),
             ));
 
