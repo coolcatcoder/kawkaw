@@ -7,6 +7,7 @@ use bevy::{
 use rand::RngExt;
 
 mod battle;
+mod battle_specifics;
 mod fabrik;
 mod text;
 
@@ -16,6 +17,7 @@ fn main() -> AppExit {
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             fabrik::plugin,
             battle::plugin,
+            battle_specifics::plugin,
         ))
         .add_systems(
             Startup,

@@ -1,12 +1,15 @@
 use super::text::Text;
 use bevy::{
-    color::palettes::css::{BLACK, BLUE, GREEN, PURPLE},
+    color::palettes::css::{BLACK, BLUE},
     input::{ButtonState, keyboard::KeyboardInput},
     prelude::*,
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, insert_resources)
+    app.add_message::<StartBattle>()
+        .add_message::<EnemyTurnStart>()
+        .add_message::<EnemyTurnEnd>()
+        .add_systems(Startup, insert_resources)
         .add_systems(Update, update_ui);
 }
 
@@ -63,20 +66,28 @@ struct Handles {
 }
 
 #[derive(Resource)]
+struct Entities {
+    character_menus: Vec<CharacterMenu>,
+}
+
+#[derive(Resource)]
 enum Ui {
     Empty,
     Character {
         character: u8,
-        characters: Vec<CharacterMenu>,
 
         menu_hovered: u8,
         menus: Vec<Entity>,
     },
+    EnemyTurn,
 }
 
 struct UiCommands<'w, 's> {
     commands: Commands<'w, 's>,
     handles: &'w Handles,
+    entities: &'w mut Entities,
+    sprites: Query<'w, 's, &'static mut Sprite>,
+    transforms: Query<'w, 's, &'static mut Transform>,
 
     // For drawing rectangles.
     style: Style,
@@ -199,6 +210,27 @@ impl UiCommands<'_, '_> {
         menus
     }
 
+    fn character_menu_raise(&mut self, character_menu: u8) {
+        let character_menu = self.entities.character_menus[character_menu as usize];
+        for entity in [
+            character_menu.bottom,
+            character_menu.top,
+            character_menu.text,
+        ] {
+            self.transforms.get_mut(entity).unwrap().translation.y += CHARACTER_HALF * 300.;
+        }
+    }
+    fn character_menu_lower(&mut self, character_menu: u8) {
+        let character_menu = self.entities.character_menus[character_menu as usize];
+        for entity in [
+            character_menu.bottom,
+            character_menu.top,
+            character_menu.text,
+        ] {
+            self.transforms.get_mut(entity).unwrap().translation.y -= CHARACTER_HALF * 300.;
+        }
+    }
+
     fn character_menus(&mut self) -> Vec<CharacterMenu> {
         let previous_style = self.style.clone();
 
@@ -226,7 +258,7 @@ impl UiCommands<'_, '_> {
                         main_box::MAX_Y - CHARACTER_HALF + offset,
                     ),
                 );
-                self.text(
+                let text = self.text(
                     (
                         1. / 3. * index as f32 + 0.04,
                         main_box::MAX_Y - CHARACTER_HALF * 1.5 + offset,
@@ -234,12 +266,32 @@ impl UiCommands<'_, '_> {
                     "GASTER (HP 1/1)",
                 );
 
-                CharacterMenu { top, bottom }
+                CharacterMenu { top, bottom, text }
             })
             .collect();
 
         self.style = previous_style;
         character_menus
+    }
+
+    fn highlight_on_option_under_name(&mut self, entity: Entity) {
+        self.sprites
+            .get_mut(entity)
+            .unwrap()
+            .texture_atlas
+            .as_mut()
+            .unwrap()
+            .index += 12;
+    }
+
+    fn highlight_off_option_under_name(&mut self, entity: Entity) {
+        self.sprites
+            .get_mut(entity)
+            .unwrap()
+            .texture_atlas
+            .as_mut()
+            .unwrap()
+            .index -= 12;
     }
 }
 
@@ -250,9 +302,11 @@ struct Style {
     outline: Option<(Colour, f32)>,
 }
 
+#[derive(Clone, Copy)]
 struct CharacterMenu {
     top: Entity,
     bottom: Entity,
+    text: Entity,
 }
 
 fn insert_resources(
@@ -272,10 +326,6 @@ fn insert_resources(
     );
     let battle_layout = texture_atlas_layouts.add(texture_atlas_layout);
 
-    let [black, blue, purple, green, deep_purple] =
-        [BLACK, BLUE, PURPLE, GREEN, Srgba::rgb(0.2, 0.125, 0.2)]
-            .map(|colour| materials.add(Color::Srgba(colour)));
-
     commands.insert_resource(Handles {
         battle,
         battle_layout,
@@ -285,6 +335,9 @@ fn insert_resources(
         colour_handles: GeneratedColourHandles::new(&mut materials),
     });
     commands.insert_resource(Ui::Empty);
+    commands.insert_resource(Entities {
+        character_menus: vec![],
+    });
 }
 
 mod main_box {
@@ -299,22 +352,32 @@ mod main_box {
     }
 }
 
-const MAIN_BOX_HEIGHT: f32 = 0.75;
-const MAIN_BOX_OUTLINE_HEIGHT: f32 = 0.005;
-const MAIN_BOX_FULL_HEIGHT: f32 = MAIN_BOX_HEIGHT - MAIN_BOX_OUTLINE_HEIGHT;
 const CHARACTER_HALF: f32 = 0.08;
 
 fn update_ui(
+    mut battle_requests: MessageReader<StartBattle>,
+    mut battles: Local<Vec<StartBattle>>,
     handles: Res<Handles>,
+    mut entities: ResMut<Entities>,
     mut ui: ResMut<Ui>,
     commands: Commands,
     mut keyboard_input: MessageReader<KeyboardInput>,
-    mut sprites: Query<&mut Sprite>,
-    mut transforms: Query<&mut Transform>,
+    sprites: Query<&'static mut Sprite>,
+    transforms: Query<&'static mut Transform>,
+    mut enemy_turn_start: MessageWriter<EnemyTurnStart>,
+    mut enemy_turn_end: MessageWriter<EnemyTurnEnd>,
 ) {
+    battles.extend(battle_requests.read().cloned());
+    let Some(battle) = battles.first() else {
+        return;
+    };
+
     let mut commands = UiCommands {
         commands,
         handles: &handles,
+        entities: &mut entities,
+        sprites,
+        transforms,
         style: Style {
             depth: 2.,
             fill: Colour::Black,
@@ -322,96 +385,116 @@ fn update_ui(
         },
     };
 
-    match &mut *ui {
+    *ui = match core::mem::replace(&mut *ui, Ui::Empty) {
         Ui::Empty => {
             // Main box.
             commands.depth(5.);
-            commands.rectangle((0., MAIN_BOX_HEIGHT), (1., 1.));
+            commands.rectangle((0., main_box::main_box::MAX_Y), (1., 1.));
 
             // Main box outline.
             commands.fill(Colour::DeepPurple);
             commands.rectangle(
-                (0., MAIN_BOX_HEIGHT - MAIN_BOX_OUTLINE_HEIGHT),
-                (1., MAIN_BOX_HEIGHT),
+                (0., main_box::main_box::MAX_Y - main_box::outline::HEIGHT),
+                (1., main_box::main_box::MAX_Y),
             );
 
             let menus = commands.menus(0);
 
             commands.text((0.05, main_box::MAX_Y + 0.05), "* Floradinn florads in!\n* Floradinn florads in!\n* Floradinn florads in!\n* Is that a cut on your face, or part of your eye?\n* The gash weaves down as if you cry.");
 
-            let characters = commands.character_menus();
+            commands.entities.character_menus = commands.character_menus();
 
-            *ui = Ui::Character {
+            Ui::Character {
                 character: 0,
-                characters,
                 menu_hovered: 0,
                 menus,
-            };
+            }
         }
         Ui::Character {
-            character,
-            characters,
-            menu_hovered,
-            menus,
-        } => {
-            for keyboard_input in keyboard_input.read() {
+            mut character,
+            mut menu_hovered,
+            mut menus,
+        } => keyboard_input
+            .read()
+            .find_map(|keyboard_input| {
                 if matches!(keyboard_input.state, ButtonState::Released) {
-                    continue;
+                    return None;
                 }
 
                 match keyboard_input.key_code {
                     KeyCode::KeyA => {
-                        sprites
-                            .get_mut(menus[*menu_hovered as usize])
-                            .unwrap()
-                            .texture_atlas
-                            .as_mut()
-                            .unwrap()
-                            .index += 12;
+                        commands.highlight_on_option_under_name(menus[menu_hovered as usize]);
 
-                        if *menu_hovered == 0 {
-                            *menu_hovered = 4
+                        if menu_hovered == 0 {
+                            menu_hovered = 4
                         } else {
-                            *menu_hovered -= 1;
+                            menu_hovered -= 1;
                         }
 
-                        sprites
-                            .get_mut(menus[*menu_hovered as usize])
-                            .unwrap()
-                            .texture_atlas
-                            .as_mut()
-                            .unwrap()
-                            .index -= 12;
+                        commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
                     }
                     KeyCode::KeyD => {
-                        sprites
-                            .get_mut(menus[*menu_hovered as usize])
-                            .unwrap()
-                            .texture_atlas
-                            .as_mut()
-                            .unwrap()
-                            .index += 12;
+                        commands.highlight_on_option_under_name(menus[menu_hovered as usize]);
 
-                        if *menu_hovered == 4 {
-                            *menu_hovered = 0
+                        if menu_hovered == 4 {
+                            menu_hovered = 0
                         } else {
-                            *menu_hovered += 1;
+                            menu_hovered += 1;
                         }
 
-                        sprites
-                            .get_mut(menus[*menu_hovered as usize])
-                            .unwrap()
-                            .texture_atlas
-                            .as_mut()
-                            .unwrap()
-                            .index -= 12;
+                        commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
+                    }
+                    KeyCode::Enter => {
+                        character += 1;
+                        menu_hovered = 0;
+
+                        for entity in menus.iter() {
+                            commands.commands.entity(*entity).despawn();
+                        }
+
+                        commands.character_menu_lower(character - 1);
+                        if character == 3 {
+                            enemy_turn_start.write(EnemyTurnStart {});
+                            return Some(Ui::EnemyTurn);
+                        } else {
+                            menus = commands.menus(character);
+                            commands.character_menu_raise(character);
+                        }
                     }
                     _ => (),
                 }
+                None
+            })
+            .unwrap_or(Ui::Character {
+                character,
+                menu_hovered,
+                menus,
+            }),
+        Ui::EnemyTurn => {
+            enemy_turn_end.write(EnemyTurnEnd {});
+            let menus = commands.menus(0);
+            commands.character_menu_raise(0);
+            Ui::Character {
+                character: 0,
+                menu_hovered: 0,
+                menus,
             }
         }
-        _ => todo!(),
-    }
+    };
 
     keyboard_input.read().for_each(|_| {});
+}
+
+#[derive(Message, Clone)]
+pub struct StartBattle {}
+
+#[derive(Message)]
+pub struct EnemyTurnStart {}
+#[derive(Message)]
+pub struct EnemyTurnEnd {}
+
+struct Character {
+    name: &'static str,
+    max_health: u32,
+    defence: u32,
 }
