@@ -1,14 +1,27 @@
+use std::ops::{Deref, DerefMut};
+
+use crate::input::{Input, UiMove};
+
 use super::text::Text;
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
+    diagnostic::FrameCount,
+    ecs::{
+        change_detection::Tick,
+        query::FilteredAccessSet,
+        system::{
+            ReadOnlySystemParam, StaticSystemParam, SystemMeta, SystemParam,
+            SystemParamValidationError,
+        },
+        world::unsafe_world_cell::UnsafeWorldCell,
+    },
     input::{ButtonState, keyboard::KeyboardInput},
     prelude::*,
 };
 
 pub fn plugin(app: &mut App) {
     app.add_message::<StartBattle>()
-        .add_message::<EnemyTurnStart>()
-        .add_message::<EnemyTurnEnd>()
+        .add_message::<BattleMessage>()
         .add_systems(Startup, insert_resources)
         .add_systems(Update, update_ui);
 }
@@ -274,7 +287,7 @@ impl UiCommands<'_, '_> {
         character_menus
     }
 
-    fn highlight_on_option_under_name(&mut self, entity: Entity) {
+    fn highlight_off_option_under_name(&mut self, entity: Entity) {
         self.sprites
             .get_mut(entity)
             .unwrap()
@@ -284,7 +297,7 @@ impl UiCommands<'_, '_> {
             .index += 12;
     }
 
-    fn highlight_off_option_under_name(&mut self, entity: Entity) {
+    fn highlight_on_option_under_name(&mut self, entity: Entity) {
         self.sprites
             .get_mut(entity)
             .unwrap()
@@ -361,11 +374,10 @@ fn update_ui(
     mut entities: ResMut<Entities>,
     mut ui: ResMut<Ui>,
     commands: Commands,
-    mut keyboard_input: MessageReader<KeyboardInput>,
+    input: Res<Input>,
     sprites: Query<&'static mut Sprite>,
     transforms: Query<&'static mut Transform>,
-    mut enemy_turn_start: MessageWriter<EnemyTurnStart>,
-    mut enemy_turn_end: MessageWriter<EnemyTurnEnd>,
+    mut message: MessageWriter<BattleMessage>,
 ) {
     battles.extend(battle_requests.read().cloned());
     let Some(battle) = battles.first() else {
@@ -414,87 +426,306 @@ fn update_ui(
             mut character,
             mut menu_hovered,
             mut menus,
-        } => keyboard_input
-            .read()
-            .find_map(|keyboard_input| {
-                if matches!(keyboard_input.state, ButtonState::Released) {
-                    return None;
+        } => {
+            if input.pressed::<UiMove>() {
+                info!("Held = {:?}", input.held::<UiMove>());
+                commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
+
+                menu_hovered = (menu_hovered as i8 + input.held::<UiMove>() as i8)
+                    .rem_euclid(5)
+                    .strict_cast();
+                info!("{menu_hovered}");
+
+                commands.highlight_on_option_under_name(menus[menu_hovered as usize]);
+            }
+
+            if input.pressed_old(KeyCode::Enter) {
+                character += 1;
+                menu_hovered = 0;
+
+                for entity in menus.iter() {
+                    commands.commands.entity(*entity).despawn();
                 }
 
-                match keyboard_input.key_code {
-                    KeyCode::KeyA => {
-                        commands.highlight_on_option_under_name(menus[menu_hovered as usize]);
-
-                        if menu_hovered == 0 {
-                            menu_hovered = 4
-                        } else {
-                            menu_hovered -= 1;
-                        }
-
-                        commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
-                    }
-                    KeyCode::KeyD => {
-                        commands.highlight_on_option_under_name(menus[menu_hovered as usize]);
-
-                        if menu_hovered == 4 {
-                            menu_hovered = 0
-                        } else {
-                            menu_hovered += 1;
-                        }
-
-                        commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
-                    }
-                    KeyCode::Enter => {
-                        character += 1;
-                        menu_hovered = 0;
-
-                        for entity in menus.iter() {
-                            commands.commands.entity(*entity).despawn();
-                        }
-
-                        commands.character_menu_lower(character - 1);
-                        if character == 3 {
-                            enemy_turn_start.write(EnemyTurnStart {});
-                            return Some(Ui::EnemyTurn);
-                        } else {
-                            menus = commands.menus(character);
-                            commands.character_menu_raise(character);
-                        }
-                    }
-                    _ => (),
+                commands.character_menu_lower(character - 1);
+                if character == 3 {
+                    message.write(BattleMessage::EnemyTurnStart);
+                    Some(Ui::EnemyTurn)
+                } else {
+                    menus = commands.menus(character);
+                    commands.character_menu_raise(character);
+                    None
                 }
+            } else {
                 None
-            })
+            }
             .unwrap_or(Ui::Character {
                 character,
                 menu_hovered,
                 menus,
-            }),
+            })
+        }
         Ui::EnemyTurn => {
-            enemy_turn_end.write(EnemyTurnEnd {});
-            let menus = commands.menus(0);
-            commands.character_menu_raise(0);
-            Ui::Character {
-                character: 0,
-                menu_hovered: 0,
-                menus,
-            }
+            // message.write(BattleMessage::EnemyTurnEnd);
+            // let menus = commands.menus(0);
+            // commands.character_menu_raise(0);
+            // Ui::Character {
+            //     character: 0,
+            //     menu_hovered: 0,
+            //     menus,
+            // }
+            Ui::EnemyTurn
         }
     };
-
-    keyboard_input.read().for_each(|_| {});
 }
 
 #[derive(Message, Clone)]
 pub struct StartBattle {}
 
 #[derive(Message)]
-pub struct EnemyTurnStart {}
-#[derive(Message)]
-pub struct EnemyTurnEnd {}
-
-struct Character {
-    name: &'static str,
-    max_health: u32,
-    defence: u32,
+pub enum BattleMessage {
+    EnemyTurnStart,
+    EnemyTurnEnd,
 }
+
+#[derive(SystemParam)]
+pub struct Battle<'w, 's> {
+    messages: CustomLogic<'w, 's, BattleMessageLogic>,
+}
+
+#[derive(Default)]
+struct BattleMessageLogic {
+    enemy_turn_start: bool,
+    enemy_turn: bool,
+    enemy_turn_end: bool,
+}
+impl SystemParameterLogicExtension for BattleMessageLogic {
+    type Parameter<'w, 's> = MessageMutator<'w, 's, BattleMessage>;
+
+    fn logic<'w, 's>(
+        &mut self,
+        message: &mut <Self::Parameter<'static, 'static> as SystemParam>::Item<'w, 's>,
+    ) {
+        self.enemy_turn_start = false;
+        self.enemy_turn_end = false;
+
+        for message in message.read() {
+            match message {
+                BattleMessage::EnemyTurnStart => {
+                    self.enemy_turn_start = true;
+                    self.enemy_turn = true;
+                }
+                BattleMessage::EnemyTurnEnd => {
+                    self.enemy_turn_end = true;
+                    self.enemy_turn = false;
+                }
+            }
+        }
+    }
+}
+
+impl Battle<'_, '_> {
+    pub fn enemy_turn_start(&mut self) -> bool {
+        self.messages.1.enemy_turn_start
+    }
+
+    pub fn enemy_turn(&mut self) -> bool {
+        self.messages.1.enemy_turn
+    }
+
+    pub fn enemy_turn_end(&mut self) -> bool {
+        self.messages.1.enemy_turn_end
+    }
+}
+
+/// Local, but it isn't saved between runs.
+pub struct Temporary<T: Default>(pub(crate) T);
+
+// SAFETY: nothing is accessed
+unsafe impl<T: Default> ReadOnlySystemParam for Temporary<T> {}
+
+impl<T: Default> Deref for Temporary<T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Default> DerefMut for Temporary<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+// SAFETY: nothing is accessed
+unsafe impl<T: Default> SystemParam for Temporary<T> {
+    type State = ();
+    type Item<'w, 's> = Temporary<T>;
+
+    fn init_state(_world: &mut World) -> Self::State {}
+
+    fn init_access(
+        _state: &Self::State,
+        _system_meta: &mut SystemMeta,
+        _component_access_set: &mut FilteredAccessSet,
+        _world: &mut World,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn get_param<'w, 's>(
+        _state: &'s mut Self::State,
+        _system_meta: &SystemMeta,
+        _world: UnsafeWorldCell<'w>,
+        _change_tick: Tick,
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
+        Ok(Temporary(T::default()))
+    }
+}
+
+trait SystemParameterLogicExtension: FromWorld + Send + 'static {
+    type Parameter<'w, 's>: SystemParam;
+
+    fn logic<'w, 's>(
+        &mut self,
+        parameter: &mut <Self::Parameter<'static, 'static> as SystemParam>::Item<'w, 's>,
+    );
+}
+
+//#[derive(SystemParam)]
+struct CustomLogic<'w, 's, Logic: SystemParameterLogicExtension>(
+    StaticSystemParam<
+        'w,
+        's,
+        <Logic as SystemParameterLogicExtension>::Parameter<'static, 'static>,
+    >,
+    Local<'s, Logic>,
+);
+
+// Recursive expansion of SystemParam macro
+// Has slight modification.
+// =========================================
+
+const _: () = {
+    type __StructFieldsAlias<'w, 's, Logic> = (
+        StaticSystemParam<
+            'w,
+            's,
+            <Logic as SystemParameterLogicExtension>::Parameter<'static, 'static>,
+        >,
+        Local<'s, Logic>,
+    );
+    #[doc(hidden)]
+    struct FetchState<Logic: SystemParameterLogicExtension, >{
+        state: <__StructFieldsAlias:: <'static,'static,Logic>as ::bevy::ecs::system::SystemParam> ::State,
+    }
+    unsafe impl<Logic: SystemParameterLogicExtension> ::bevy::ecs::system::SystemParam
+        for CustomLogic<'_, '_, Logic>
+    {
+        type State = FetchState<Logic>;
+        type Item<'w, 's> = CustomLogic<'w, 's, Logic>;
+        fn init_state(world: &mut ::bevy::ecs::world::World) -> Self::State {
+            FetchState {
+                state: <__StructFieldsAlias:: <'_,'_,Logic>as ::bevy::ecs::system::SystemParam> ::init_state(world),
+            }
+        }
+        fn init_access(
+            state: &Self::State,
+            system_meta: &mut ::bevy::ecs::system::SystemMeta,
+            component_access_set: &mut ::bevy::ecs::query::FilteredAccessSet,
+            world: &mut ::bevy::ecs::world::World,
+        ) {
+            <__StructFieldsAlias<'_, '_, Logic> as ::bevy::ecs::system::SystemParam>::init_access(
+                &state.state,
+                system_meta,
+                component_access_set,
+                world,
+            );
+        }
+        fn apply(
+            state: &mut Self::State,
+            system_meta: &::bevy::ecs::system::SystemMeta,
+            world: &mut ::bevy::ecs::world::World,
+        ) {
+            <__StructFieldsAlias<'_, '_, Logic> as ::bevy::ecs::system::SystemParam>::apply(
+                &mut state.state,
+                system_meta,
+                world,
+            );
+        }
+        fn queue(
+            state: &mut Self::State,
+            system_meta: &::bevy::ecs::system::SystemMeta,
+            world: ::bevy::ecs::world::DeferredWorld,
+        ) {
+            <__StructFieldsAlias<'_, '_, Logic> as ::bevy::ecs::system::SystemParam>::queue(
+                &mut state.state,
+                system_meta,
+                world,
+            );
+        }
+        #[inline]
+        unsafe fn get_param<'w, 's>(
+            state: &'s mut Self::State,
+            system_meta: &::bevy::ecs::system::SystemMeta,
+            world: ::bevy::ecs::world::unsafe_world_cell::UnsafeWorldCell<'w>,
+            change_tick: ::bevy::ecs::change_detection::Tick,
+        ) -> ::core::result::Result<
+            Self::Item<'w, 's>,
+            ::bevy::ecs::system::SystemParamValidationError,
+        > {
+            let (field0, field1) = &mut state.state;
+            let mut field0 = unsafe {
+                <StaticSystemParam<
+                    'w,
+                    's,
+                    <Logic as SystemParameterLogicExtension>::Parameter<'static, 'static>,
+                > as ::bevy::ecs::system::SystemParam>::get_param(
+                    field0,
+                    system_meta,
+                    world,
+                    change_tick,
+                )
+            }
+            .map_err(|err| {
+                ::bevy::ecs::system::SystemParamValidationError::new::<Self>(
+                    err.skipped,
+                    err.message,
+                    "::0",
+                )
+            })?;
+            let mut field1 = unsafe {
+                <Local<'s, Logic> as ::bevy::ecs::system::SystemParam>::get_param(
+                    field1,
+                    system_meta,
+                    world,
+                    change_tick,
+                )
+            }
+            .map_err(|err| {
+                ::bevy::ecs::system::SystemParamValidationError::new::<Self>(
+                    err.skipped,
+                    err.message,
+                    "::1",
+                )
+            })?;
+
+            field1.logic(&mut *field0);
+            Ok(CustomLogic(field0, field1))
+        }
+    }
+    unsafe impl<'w, 's, Logic: SystemParameterLogicExtension> ReadOnlySystemParam
+        for CustomLogic<'w, 's, Logic>
+    where
+        StaticSystemParam<
+            'w,
+            's,
+            <Logic as SystemParameterLogicExtension>::Parameter<'static, 'static>,
+        >: ReadOnlySystemParam,
+        Local<'s, Logic>: ::bevy::ecs::system::ReadOnlySystemParam,
+    {
+    }
+};

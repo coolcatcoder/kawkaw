@@ -1,3 +1,7 @@
+#![allow(patterns_in_fns_without_body)]
+#![feature(integer_casts)]
+
+use avian2d::prelude::*;
 use bevy::{
     camera::{RenderTarget, ScalingMode},
     color::palettes::css::{BLACK, DARK_BLUE},
@@ -9,6 +13,7 @@ use rand::RngExt;
 mod battle;
 mod battle_specifics;
 mod fabrik;
+mod input;
 mod text;
 
 fn main() -> AppExit {
@@ -18,13 +23,16 @@ fn main() -> AppExit {
             fabrik::plugin,
             battle::plugin,
             battle_specifics::plugin,
+            input::plugin,
+            PhysicsPlugins::default().with_length_unit(20.),
+            PhysicsDebugPlugin,
         ))
         .add_systems(
             Startup,
             (
                 spawn_ship,
                 spawn_ocean,
-                spawn_kawkaw,
+                //spawn_kawkaw,
                 spawn_camera,
                 spawn_gaster,
             ),

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-avian2d = "0.7"
+avian2d = { version = "0.7", features = ["debug-plugin"] }
 bevy = { version = "0.19", default-features = false, features = [
     "scene",
     "picking",
@@ -16,8 +16,10 @@ bevy = { version = "0.19", default-features = false, features = [
     "multi_threaded",
     "x11",
     "webgl2",
+    "bevy_gilrs",
     "debug",
 ] }
+foldhash = "0.2.0"
 # Set max log levels. This helps avoid unwanted low-severity log spam, which can affect performance.
 log = { version = "0.4", features = [
     "max_level_debug",
