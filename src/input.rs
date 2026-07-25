@@ -26,14 +26,14 @@ pub fn plugin(app: &mut App) {
 #[derive(Resource)]
 pub struct Input {
     pressed: foldhash::HashSet<InputSource>,
-    held: foldhash::HashSet<InputSource>,
+    held: foldhash::HashMap<InputSource, f32>,
     bindings: foldhash::HashMap<(TypeId, u8), Vec<InputSource>>,
 
     default_dead_zone: f32,
     dead_zones: foldhash::HashMap<InputSource, f32>,
 }
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
 pub enum InputSource {
     GamepadButton(GamepadButton),
     GamepadAxisPositive(GamepadAxis),
@@ -59,10 +59,31 @@ impl Input {
         };
 
         if value >= dead_zone {
-            if self.held.insert(input_source) {
+            match input_source {
+                InputSource::GamepadAxisNegative(axis) => {
+                    self.held.remove(&InputSource::GamepadAxisPositive(axis));
+                }
+                InputSource::GamepadAxisPositive(axis) => {
+                    self.held.remove(&InputSource::GamepadAxisNegative(axis));
+                }
+                _ => (),
+            }
+
+            if self.held.insert(input_source, value).is_none() {
                 self.pressed.insert(input_source);
             }
         } else {
+            // Avoid situations in which an axis remains held when it shouldn't, due to going  the opposite way too quickly.
+            match input_source {
+                InputSource::GamepadAxisNegative(axis) => {
+                    self.held.remove(&InputSource::GamepadAxisPositive(axis));
+                }
+                InputSource::GamepadAxisPositive(axis) => {
+                    self.held.remove(&InputSource::GamepadAxisNegative(axis));
+                }
+                _ => (),
+            }
+
             self.held.remove(&input_source);
         }
     }
@@ -96,7 +117,7 @@ impl Input {
             self.bindings
                 .get(&(TypeId::of::<T>(), i))
                 .and_then(|bindings| bindings.iter().find_map(|binding| self.held.get(binding)))
-                .is_some()
+                .copied()
         })
     }
 }
@@ -128,7 +149,17 @@ fn input(
     }
 
     for gamepad_input in gamepad_axis_input.read() {
-        //info!("{gamepad_input:?}");
+        if gamepad_input.value.is_sign_positive() {
+            input.event(
+                InputSource::GamepadAxisPositive(gamepad_input.axis),
+                gamepad_input.value,
+            );
+        } else {
+            input.event(
+                InputSource::GamepadAxisNegative(gamepad_input.axis),
+                -gamepad_input.value,
+            );
+        }
     }
 }
 
@@ -139,7 +170,7 @@ pub trait ActionTemplate: 'static {
 pub trait Action: Sync + Send + 'static {
     type Output;
     fn pressed(mut check: impl FnMut(u8) -> bool) -> bool;
-    fn held(mut check: impl FnMut(u8) -> bool) -> Self::Output;
+    fn held(mut check: impl FnMut(u8) -> Option<f32>) -> Self::Output;
 }
 impl<T: Action> ActionTemplate for T {
     type Template = Self;
@@ -151,6 +182,51 @@ fn bindings(mut input: ResMut<Input>) {
 
     input.bind::<UiMove>(0, GamepadButton::DPadLeft);
     input.bind::<UiMove>(1, GamepadButton::DPadRight);
+
+    input.bind::<UiMove>(0, InputSource::GamepadAxisNegative(GamepadAxis::LeftStickX));
+    input.bind::<UiMove>(1, InputSource::GamepadAxisPositive(GamepadAxis::LeftStickX));
+
+    input.bind::<SoulMove>(0, InputSource::GamepadAxisPositive(GamepadAxis::LeftStickY));
+    input.bind::<SoulMove>(1, InputSource::GamepadAxisNegative(GamepadAxis::LeftStickX));
+    input.bind::<SoulMove>(2, InputSource::GamepadAxisPositive(GamepadAxis::LeftStickX));
+    input.bind::<SoulMove>(3, InputSource::GamepadAxisNegative(GamepadAxis::LeftStickY));
+
+    input.bind::<SoulMove>(0, KeyCode::KeyW);
+    input.bind::<SoulMove>(1, KeyCode::KeyA);
+    input.bind::<SoulMove>(2, KeyCode::KeyD);
+    input.bind::<SoulMove>(3, KeyCode::KeyS);
+
+    input.bind::<SoulMove>(0, GamepadButton::DPadUp);
+    input.bind::<SoulMove>(1, GamepadButton::DPadLeft);
+    input.bind::<SoulMove>(2, GamepadButton::DPadRight);
+    input.bind::<SoulMove>(3, GamepadButton::DPadDown);
+}
+
+impl Action for Vec2 {
+    type Output = Self;
+
+    fn pressed(mut check: impl FnMut(u8) -> bool) -> bool {
+        check(0) || check(1) || check(2) || check(3)
+    }
+
+    fn held(mut check: impl FnMut(u8) -> Option<f32>) -> Self::Output {
+        let mut output = Vec2::ZERO;
+
+        if let Some(value) = check(0) {
+            output.y += value;
+        }
+        if let Some(value) = check(1) {
+            output.x -= value;
+        }
+        if let Some(value) = check(2) {
+            output.x += value;
+        }
+        if let Some(value) = check(3) {
+            output.y -= value;
+        }
+
+        output.normalize_or_zero()
+    }
 }
 
 #[derive(Debug)]
@@ -165,11 +241,16 @@ impl Action for UiMove {
     fn pressed(mut check: impl FnMut(u8) -> bool) -> bool {
         check(0) ^ check(1)
     }
-    fn held(mut check: impl FnMut(u8) -> bool) -> Self::Output {
-        match (check(0), check(1)) {
+    fn held(mut check: impl FnMut(u8) -> Option<f32>) -> Self::Output {
+        match (check(0).is_some(), check(1).is_some()) {
             (true, false) => Self::Backwards,
             (false, true) => Self::Forwards,
             _ => Self::None,
         }
     }
+}
+
+pub struct SoulMove;
+impl ActionTemplate for SoulMove {
+    type Template = Vec2;
 }

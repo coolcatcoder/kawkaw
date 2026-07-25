@@ -69,7 +69,7 @@ colour!(
 );
 
 #[derive(Resource)]
-struct Handles {
+pub struct Handles {
     battle: Handle<Image>,
     battle_layout: Handle<TextureAtlasLayout>,
 
