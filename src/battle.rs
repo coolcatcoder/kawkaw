@@ -3,17 +3,19 @@ use std::ops::{Deref, DerefMut};
 use crate::input::{Input, UiMove};
 
 use super::text::Text;
+use avian2d::prelude::*;
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
     diagnostic::FrameCount,
     ecs::{
         change_detection::Tick,
+        lifecycle::HookContext,
         query::FilteredAccessSet,
         system::{
             ReadOnlySystemParam, StaticSystemParam, SystemMeta, SystemParam,
             SystemParamValidationError,
         },
-        world::unsafe_world_cell::UnsafeWorldCell,
+        world::{DeferredWorld, unsafe_world_cell::UnsafeWorldCell},
     },
     input::{ButtonState, keyboard::KeyboardInput},
     prelude::*,
@@ -23,7 +25,7 @@ pub fn plugin(app: &mut App) {
     app.add_message::<StartBattle>()
         .add_message::<BattleMessage>()
         .add_systems(Startup, insert_resources)
-        .add_systems(Update, update_ui);
+        .add_systems(Update, (update_ui, despawn));
 }
 
 macro_rules! colour {
@@ -477,6 +479,45 @@ fn update_ui(
             Ui::EnemyTurn
         }
     };
+}
+
+#[derive(Component)]
+#[require(RigidBody::Kinematic, Sensor, Despawn(10.))]
+pub struct Danger {
+    pub despawn_on_collision: bool,
+}
+
+#[derive(Component)]
+pub struct Despawn(f32);
+fn despawn(despawn: Query<(Entity, &mut Despawn)>, mut commands: Commands, time: Res<Time>) {
+    let time_delta = time.delta_secs();
+
+    for (entity, mut despawn) in despawn {
+        despawn.0 -= time_delta;
+
+        if despawn.0 <= 0. {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+#[derive(Component, Default)]
+#[component(on_add = Self::on_add)]
+pub struct Soul;
+impl Soul {
+    fn on_add(mut world: DeferredWorld, context: HookContext) {
+        world.commands().entity(context.entity).observe(
+            |on: On<CollisionStart>, mut commands: Commands, danger: Query<&Danger>| {
+                let Ok(danger) = danger.get(on.collider2) else {
+                    return;
+                };
+
+                if danger.despawn_on_collision {
+                    commands.entity(on.collider2).despawn();
+                }
+            },
+        );
+    }
 }
 
 #[derive(Message, Clone)]

@@ -1,16 +1,17 @@
 use crate::{
-    battle::{Battle, StartBattle},
+    battle::{Battle, Danger, Soul, StartBattle},
+    fabrik::Nodes,
     input::{Input, SoulMove},
 };
 use avian2d::prelude::*;
 use bevy::{
-    color::palettes::css::{BLACK, LIME},
+    color::palettes::css::{BLACK, LIME, WHITE},
     prelude::*,
 };
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, (start_battle, souls))
-        .add_systems(Update, (RedSoul::system, arena));
+        .add_systems(Update, (RedSoul::system, arena, kaw_kaw));
 }
 
 fn start_battle(mut commands: Commands, mut battle: MessageWriter<StartBattle>) {
@@ -45,7 +46,7 @@ fn souls(
 }
 
 #[derive(Component)]
-#[require(Transform, Visibility::Visible)]
+#[require(Transform, Visibility::Visible, Soul)]
 struct RedSoul;
 impl RedSoul {
     fn system(
@@ -68,12 +69,13 @@ impl RedSoul {
                 sprite.custom_size = Some(Vec2::splat(12.));
 
                 commands.entity(red_soul).insert((
-                    Transform::from_translation(Vec3::new(0., 50., 1.)),
+                    Transform::from_translation(Vec3::new(0., 50., 2.)),
                     sprite,
                     RigidBody::Dynamic,
                     Collider::circle(5.),
                     GravityScale(0.),
                     LockedAxes::ROTATION_LOCKED,
+                    CollisionEventsEnabled,
                 ));
             }
         }
@@ -133,6 +135,101 @@ fn arena(mut battle: Battle, entity: Query<Entity, With<Arena>>, mut commands: C
     if battle.enemy_turn_end() {
         for entity in entity {
             commands.entity(entity).clear().insert(Arena);
+        }
+    }
+}
+
+#[derive(Component)]
+struct KawKaw;
+impl KawKaw {
+    const START: Vec2 = Vec2::new(50., 130.);
+}
+
+struct KawkawPhase(Vec2, u8);
+impl Default for KawkawPhase {
+    fn default() -> Self {
+        Self(KawKaw::START, 0)
+    }
+}
+
+fn kaw_kaw(
+    mut battle: Battle,
+    nodes: Query<&mut Nodes>,
+    time: Res<Time>,
+    mut phase: Local<KawkawPhase>,
+    mut commands: Commands,
+) {
+    if battle.enemy_turn() {
+        for mut nodes in nodes {
+            let previous_target = nodes.target();
+
+            let phases = [
+                || KawKaw::START,
+                || Vec2::new(160., 120.),
+                || Vec2::new(170., -50.),
+                || {
+                    Vec2::new(
+                        rand::random_range(-80.0..-10.0),
+                        rand::random_range(-80.0..80.0) + 50.,
+                    )
+                },
+                || {
+                    Vec2::new(
+                        rand::random_range(0.0..80.0),
+                        rand::random_range(-80.0..80.0) + 50.,
+                    )
+                },
+            ];
+
+            let desired_target = phase.0;
+
+            let direction = (desired_target - previous_target).normalize_or_zero();
+            let distance = 130. * time.delta_secs();
+            let new_target = direction * distance + previous_target;
+            nodes.set_target(new_target);
+
+            if desired_target.distance_squared(previous_target) < 10. {
+                phase.1 += 1;
+                if phase.1 as usize == phases.len() {
+                    phase.1 = 0;
+                }
+
+                phase.0 = phases[phase.1 as usize]();
+
+                if phase.1 == 0 || phase.1 == 4 {
+                    info!("Test!");
+
+                    let quantity = 10;
+                    for i in 0..quantity {
+                        let angle = (360. / quantity as f32 * i as f32).to_radians();
+
+                        commands.spawn((
+                            Danger {
+                                despawn_on_collision: true,
+                            },
+                            Collider::rectangle(5., 5.),
+                            Sprite::from_color(WHITE, Vec2::splat(5.)),
+                            Transform::from_translation(desired_target.extend(1.)),
+                            LinearVelocity(Vec2::new(angle.sin(), angle.cos()) * 35.),
+                        ));
+                    }
+
+                    for i in 0..quantity {
+                        let piece = 360. / quantity as f32;
+                        let angle = (piece * i as f32 + piece * 0.5).to_radians();
+
+                        commands.spawn((
+                            Danger {
+                                despawn_on_collision: true,
+                            },
+                            Collider::rectangle(5., 5.),
+                            Sprite::from_color(WHITE, Vec2::splat(5.)),
+                            Transform::from_translation(desired_target.extend(1.)),
+                            LinearVelocity(Vec2::new(angle.sin(), angle.cos()) * 25.),
+                        ));
+                    }
+                }
+            }
         }
     }
 }

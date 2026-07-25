@@ -1,7 +1,7 @@
 use bevy::{color::palettes::css::GREEN, prelude::*};
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Update, (debug_render, render, iterate));
+    app.add_systems(Update, (render, iterate));
 }
 
 #[derive(Component)]
@@ -12,14 +12,22 @@ pub struct Node(
 );
 
 #[derive(Component)]
-pub struct Nodes(Vec<Vec2>);
+pub struct Nodes(Vec<Vec2>, Vec2);
 impl Nodes {
-    pub fn new(quantity: usize) -> Self {
+    pub fn new(base: Vec2, target: Vec2, quantity: usize) -> Self {
         Self(
             (0..quantity)
-                .map(|i| Vec2::new(0., i as f32 * LENGTH))
+                .map(|i| Vec2::new(base.x, base.y + (i as f32 * LENGTH)))
                 .collect(),
+            target,
         )
+    }
+
+    pub fn target(&self) -> Vec2 {
+        self.1
+    }
+    pub fn set_target(&mut self, target: Vec2) {
+        self.1 = target;
     }
 }
 
@@ -44,10 +52,11 @@ fn debug_render(mut gizmos: Gizmos, nodes: Query<&Nodes>) {
 
 // Copied from https://www.andreasaristidou.com/publications/papers/FABRIK.pdf
 fn iterate(nodes: Query<&mut Nodes>) {
-    let t = Vec2::new(50., 50.);
-    let tol = 5.;
+    //let t = Vec2::new(100., 75.);
+    let tol = 1.;
 
     for mut nodes in nodes {
+        let t = nodes.1;
         let p = &mut nodes.0;
         let n = p.len();
 
@@ -69,29 +78,31 @@ fn iterate(nodes: Query<&mut Nodes>) {
             // The target is reachable; thus, set as b the initial position of the joint p[0].
             let b = p[0];
             // Check whether the distance between the end effector p[n-1] and the target t is greater than a tolerance.
-            //while (p[n - 1] - t).length() > tol {
-            // STAGE 1: FORWARD REACHING
-            // Set the end effector p[n-1] as target t.
-            p[n - 1] = t;
-            for i in (0..(n - 1)).rev() {
-                // Find the distance r[i] between the new joint position p[i+1] and the joint p[i].
-                let r = (p[i + 1] - p[i]).length();
-                let k = LENGTH / r;
-                // Find the new joint positions p[i].
-                p[i] = (1. - k) * p[i + 1] + k * p[i];
-            }
+            let mut tries_remaining = 15_u8;
+            while (p[n - 1] - t).length() > tol && tries_remaining != 0 {
+                tries_remaining -= 1;
+                // STAGE 1: FORWARD REACHING
+                // Set the end effector p[n-1] as target t.
+                p[n - 1] = t;
+                for i in (0..(n - 1)).rev() {
+                    // Find the distance r[i] between the new joint position p[i+1] and the joint p[i].
+                    let r = (p[i + 1] - p[i]).length();
+                    let k = LENGTH / r;
+                    // Find the new joint positions p[i].
+                    p[i] = (1. - k) * p[i + 1] + k * p[i];
+                }
 
-            // STAGE 2: BACKWARD REACHING
-            // Set the root p[0] its initial position.
-            p[0] = b;
-            for i in 0..(n - 1) {
-                // Find the distance r[i] between the new joint position p[i] and the joint p[i+1].
-                let r = (p[i + 1] - p[i]).length();
-                let k = LENGTH / r;
-                // Find the new joint positions p[i].
-                p[i + 1] = (1. - k) * p[i] + k * p[i + 1];
+                // STAGE 2: BACKWARD REACHING
+                // Set the root p[0] its initial position.
+                p[0] = b;
+                for i in 0..(n - 1) {
+                    // Find the distance r[i] between the new joint position p[i] and the joint p[i+1].
+                    let r = (p[i + 1] - p[i]).length();
+                    let k = LENGTH / r;
+                    // Find the new joint positions p[i].
+                    p[i + 1] = (1. - k) * p[i] + k * p[i + 1];
+                }
             }
-            //}
         }
     }
 }

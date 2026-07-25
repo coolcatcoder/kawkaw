@@ -25,14 +25,14 @@ fn main() -> AppExit {
             battle_specifics::plugin,
             input::plugin,
             PhysicsPlugins::default().with_length_unit(20.),
-            PhysicsDebugPlugin,
+            //PhysicsDebugPlugin,
         ))
         .add_systems(
             Startup,
             (
                 spawn_ship,
                 spawn_ocean,
-                //spawn_kawkaw,
+                spawn_kawkaw,
                 spawn_camera,
                 spawn_gaster,
             ),
@@ -105,6 +105,8 @@ fn spawn_kawkaw(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
+    let quantity = 30;
+
     let head_image = asset_server.load("kawkaw_all.png");
     let head_layout = TextureAtlasLayout::from_grid(
         UVec2::new(40, 28),
@@ -125,38 +127,20 @@ fn spawn_kawkaw(
     );
     let body_layout = texture_atlas_layouts.add(body_layout);
 
-    // commands.spawn((
-    //     Transform::from_translation(Vec3::Z * 2.),
-    //     Sprite::from_atlas_image(
-    //         head_image,
-    //         TextureAtlas {
-    //             layout: head_layout,
-    //             index: 0,
-    //         },
-    //     ),
-    // ));
-
-    // for i in 0..5 {
-    //     commands.spawn((
-    //         Transform::from_translation(Vec3::new(i as f32 * 9., i as f32 * -7., i as f32 * 3.)),
-    //         Sprite::from_atlas_image(
-    //             body_image.clone(),
-    //             TextureAtlas {
-    //                 layout: body_layout.clone(),
-    //                 index: 0,
-    //             },
-    //         ),
-    //     ));
-    // }
-
-    let nodes = commands.spawn(fabrik::Nodes::new(10)).id();
+    let nodes = commands
+        .spawn(fabrik::Nodes::new(
+            Vec2::new(140., 50.),
+            Vec2::new(100., 70.),
+            quantity,
+        ))
+        .id();
 
     commands.spawn((
-        fabrik::Node(nodes, 9, |transform, translation, translation_next| {
+        fabrik::Node(nodes, quantity - 1, |transform, translation, _| {
             transform.translation.x = translation.x;
             transform.translation.y = translation.y;
         }),
-        Transform::from_translation(Vec3::new(0., 0., 0.)),
+        Transform::from_translation(Vec3::new(0., 0., 0.5)),
         Sprite::from_atlas_image(
             head_image,
             TextureAtlas {
@@ -166,13 +150,19 @@ fn spawn_kawkaw(
         ),
     ));
 
-    for i in 0..9 {
+    for i in 0..(quantity - 1) {
         commands.spawn((
             fabrik::Node(nodes, i, |transform, translation, translation_next| {
                 transform.translation.x = translation.x;
                 transform.translation.y = translation.y;
+
+                let to_next = (translation_next.unwrap() - translation).normalize_or_zero();
+                let rotation = Quat::from_rotation_arc(Vec3::Y, to_next.extend(0.));
+
+                transform.rotation = rotation;
+                transform.rotate_z((-45_f32).to_radians());
             }),
-            Transform::from_translation(Vec3::new(0., 0., i as f32 * 3.)),
+            Transform::from_translation(Vec3::new(0., 0., -(i as f32) + quantity as f32 + 5.)),
             Sprite::from_atlas_image(
                 body_image.clone(),
                 TextureAtlas {
