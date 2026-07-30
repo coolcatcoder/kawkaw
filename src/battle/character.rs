@@ -5,7 +5,9 @@ use bevy::{
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, characters);
+    app.add_message::<CharacterUiMessage>()
+        .add_systems(Startup, characters)
+        .add_systems(Update, CharacterUiMessage::system);
 }
 
 #[derive(Resource)]
@@ -13,10 +15,32 @@ pub struct Characters {
     slots: Vec<Character>,
 }
 
-#[derive(Component)]
-pub struct Health {
-    current: u32,
-    max: u32,
+#[derive(Message)]
+pub enum CharacterUiMessage {
+    Raise(u8),
+    Lower(u8),
+}
+impl CharacterUiMessage {
+    fn system(
+        mut message: MessageReader<Self>,
+        characters: Res<Characters>,
+        mut transform: Query<&mut Transform>,
+    ) {
+        for message in message.read() {
+            match message {
+                Self::Raise(index) => {
+                    let character = &characters.slots[index.strict_cast::<usize>()];
+                    transform.get_mut(character.parent).unwrap().translation.y =
+                        CHARACTER_HALF * 300.;
+                }
+                Self::Lower(index) => {
+                    let character = &characters.slots[index.strict_cast::<usize>()];
+                    transform.get_mut(character.parent).unwrap().translation.y -=
+                        CHARACTER_HALF * 300.;
+                }
+            }
+        }
+    }
 }
 
 struct Character {
@@ -79,37 +103,6 @@ impl UiCommands<'_, '_> {
         }
 
         self.style = previous_style;
-    }
-
-    pub fn character_menu_raise(&mut self, character_menu: u8) {
-        let character_menu = &self.characters.slots[character_menu as usize];
-        // for entity in [
-        //     character_menu.bottom,
-        //     character_menu.top,
-        //     character_menu.text,
-        // ] {
-        //     self.transforms.get_mut(entity).unwrap().translation.y += CHARACTER_HALF * 300.;
-        // }
-        self.transforms
-            .get_mut(character_menu.parent)
-            .unwrap()
-            .translation
-            .y += CHARACTER_HALF * 300.;
-    }
-    pub fn character_menu_lower(&mut self, character_menu: u8) {
-        let character_menu = &self.characters.slots[character_menu as usize];
-        // for entity in [
-        //     character_menu.bottom,
-        //     character_menu.top,
-        //     character_menu.text,
-        // ] {
-        //     self.transforms.get_mut(entity).unwrap().translation.y -= CHARACTER_HALF * 300.;
-        // }
-        self.transforms
-            .get_mut(character_menu.parent)
-            .unwrap()
-            .translation
-            .y -= CHARACTER_HALF * 300.;
     }
 
     fn health_text(&mut self, character_index: u8) {

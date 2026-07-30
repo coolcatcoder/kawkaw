@@ -1,7 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::{
-    battle::{audio::AudioMessage, character::Characters},
+    battle::{
+        audio::AudioMessage,
+        character::{CharacterUiMessage, Characters},
+    },
     input::{Input, UiMove},
 };
 
@@ -250,6 +253,7 @@ fn update_ui(
     transforms: Query<&'static mut Transform>,
     mut message: MessageMutator<BattleMessage>,
     mut audio_message: MessageWriter<AudioMessage>,
+    mut character_ui_message: MessageWriter<CharacterUiMessage>,
 ) {
     battles.extend(battle_requests.read().cloned());
     let Some(_) = battles.first() else {
@@ -321,13 +325,14 @@ fn update_ui(
                     commands.commands.entity(*entity).despawn();
                 }
 
-                commands.character_menu_lower(character - 1);
+                character_ui_message.write(CharacterUiMessage::Lower(character - 1));
+
                 if character == 3 {
                     message.write(BattleMessage::EnemyTurnStart);
                     Some(Ui::EnemyTurn)
                 } else {
                     menus = commands.menus(character);
-                    commands.character_menu_raise(character);
+                    character_ui_message.write(CharacterUiMessage::Raise(character));
                     None
                 }
             } else {
