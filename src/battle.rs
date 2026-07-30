@@ -26,6 +26,7 @@ use bevy::{
 
 mod audio;
 pub mod character;
+mod draw;
 pub mod soul;
 
 pub fn plugin(app: &mut App) {
