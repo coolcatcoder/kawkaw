@@ -1,4 +1,4 @@
-use crate::battle::{CHARACTER_HALF, Colour, UiCommands, main_box};
+use crate::battle::{CHARACTER_HALF, UiCommands, main_box};
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
     prelude::*,

@@ -8,7 +8,7 @@ use crate::{
 use super::text::Text;
 use avian2d::prelude::*;
 use bevy::{
-    color::palettes::css::{BLACK, BLUE},
+    color::palettes::css::BLACK,
     ecs::{
         change_detection::Tick,
         query::FilteredAccessSet,
@@ -36,58 +36,12 @@ pub fn plugin(app: &mut App) {
         .add_systems(Update, (update_ui, despawn));
 }
 
-macro_rules! colour {
-    ($($variant:ident($colour:expr)),*$(,)?) => {
-        #[derive(Clone)]
-        enum Colour {
-            $(
-                $variant
-            ),*
-        }
-        impl Colour {
-            fn to_handle(&self, colour_handles: &GeneratedColourHandles) -> Handle<ColorMaterial> {
-                match self {
-                    $(
-                        Colour::$variant => colour_handles.$variant.clone(),
-                    )*
-                }
-            }
-        }
-
-        #[expect(nonstandard_style)]
-        struct GeneratedColourHandles {
-            $(
-                $variant: Handle<ColorMaterial>
-            ),*
-        }
-        impl GeneratedColourHandles {
-            fn new(colour_materials: &mut Assets<ColorMaterial>) -> Self {
-                Self {
-                    $(
-                        $variant: colour_materials.add(Color::from($colour))
-                    ),*
-                }
-            }
-        }
-    };
-}
-
-colour!(
-    Black(BLACK),
-    Blue(BLUE),
-    DeepPurple(Srgba::rgb(0.2, 0.125, 0.2)),
-);
-
 const DEEP_PURPLE: Srgba = Srgba::rgb(0.2, 0.125, 0.2);
 
 #[derive(Resource)]
 pub struct Handles {
     battle: Handle<Image>,
     battle_layout: Handle<TextureAtlasLayout>,
-
-    square: Handle<Mesh>,
-
-    colour_handles: GeneratedColourHandles,
 }
 
 #[derive(Resource)]
@@ -251,8 +205,6 @@ fn insert_resources(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let battle = asset_server.load("battle.png");
     let texture_atlas_layout = TextureAtlasLayout::from_grid(
@@ -267,10 +219,6 @@ fn insert_resources(
     commands.insert_resource(Handles {
         battle,
         battle_layout,
-
-        square: meshes.add(Rectangle::new(1., 1.)),
-
-        colour_handles: GeneratedColourHandles::new(&mut materials),
     });
     commands.insert_resource(Ui::Empty);
 }
