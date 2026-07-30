@@ -18,6 +18,10 @@ bevy = { version = "0.19", default-features = false, features = [
     "webgl2",
     "bevy_gilrs",
     "debug",
+    "bevy_audio",
+    "wav",
+    "vorbis",
+    #"symphonia-vorbis",
 ] }
 foldhash = "0.2.0"
 # Set max log levels. This helps avoid unwanted low-severity log spam, which can affect performance.

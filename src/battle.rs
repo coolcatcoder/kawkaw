@@ -1,28 +1,36 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::input::{Input, UiMove};
+use crate::{
+    battle::{audio::AudioMessage, character::Characters},
+    input::{Input, UiMove},
+};
 
 use super::text::Text;
 use avian2d::prelude::*;
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
-    diagnostic::FrameCount,
     ecs::{
         change_detection::Tick,
-        lifecycle::HookContext,
         query::FilteredAccessSet,
         system::{
             ReadOnlySystemParam, StaticSystemParam, SystemMeta, SystemParam,
             SystemParamValidationError,
         },
-        world::{DeferredWorld, unsafe_world_cell::UnsafeWorldCell},
+        world::unsafe_world_cell::UnsafeWorldCell,
     },
-    input::{ButtonState, keyboard::KeyboardInput},
     prelude::*,
 };
 
+// water plants
+// also make three heads from off screen do circles
+
+mod audio;
+pub mod character;
+pub mod soul;
+
 pub fn plugin(app: &mut App) {
-    app.add_message::<StartBattle>()
+    app.add_plugins((character::plugin, audio::plugin, soul::plugin))
+        .add_message::<StartBattle>()
         .add_message::<BattleMessage>()
         .add_systems(Startup, insert_resources)
         .add_systems(Update, (update_ui, despawn));
@@ -70,6 +78,8 @@ colour!(
     DeepPurple(Srgba::rgb(0.2, 0.125, 0.2)),
 );
 
+const DEEP_PURPLE: Srgba = Srgba::rgb(0.2, 0.125, 0.2);
+
 #[derive(Resource)]
 pub struct Handles {
     battle: Handle<Image>,
@@ -78,11 +88,6 @@ pub struct Handles {
     square: Handle<Mesh>,
 
     colour_handles: GeneratedColourHandles,
-}
-
-#[derive(Resource)]
-struct Entities {
-    character_menus: Vec<CharacterMenu>,
 }
 
 #[derive(Resource)]
@@ -100,7 +105,7 @@ enum Ui {
 struct UiCommands<'w, 's> {
     commands: Commands<'w, 's>,
     handles: &'w Handles,
-    entities: &'w mut Entities,
+    characters: &'w mut Characters,
     sprites: Query<'w, 's, &'static mut Sprite>,
     transforms: Query<'w, 's, &'static mut Transform>,
 
@@ -109,12 +114,12 @@ struct UiCommands<'w, 's> {
 }
 
 impl UiCommands<'_, '_> {
-    fn outline(&mut self, outline: Option<(Colour, f32)>) {
-        self.style.outline = outline;
+    fn outline(&mut self, outline: Option<(impl Into<Color>, f32)>) {
+        self.style.outline = outline.map(|(colour, thickness)| (colour.into(), thickness));
     }
 
-    fn fill(&mut self, fill: Colour) {
-        self.style.fill = fill;
+    fn fill(&mut self, fill: impl Into<Color>) {
+        self.style.fill = fill.into();
     }
 
     fn depth(&mut self, depth: f32) {
@@ -162,35 +167,24 @@ impl UiCommands<'_, '_> {
         info!("{translation}");
 
         let transform = Transform {
-            scale: scale.extend(1.),
             translation: translation.extend(self.style.depth),
             ..default()
         };
 
         if let Some((outline, thickness)) = self.style.outline.as_ref() {
             self.commands
-                .spawn((
-                    transform,
-                    Mesh2d(self.handles.square.clone()),
-                    MeshMaterial2d(outline.to_handle(&self.handles.colour_handles)),
-                ))
+                .spawn((transform, Sprite::from_color(*outline, scale)))
                 .with_child((
                     Transform {
-                        scale: ((scale - Vec2::splat(*thickness)) / scale).extend(1.),
                         translation: Vec3::Z * 1.5,
                         ..default()
                     },
-                    Mesh2d(self.handles.square.clone()),
-                    MeshMaterial2d(self.style.fill.to_handle(&self.handles.colour_handles)),
+                    Sprite::from_color(self.style.fill, scale - *thickness),
                 ))
                 .id()
         } else {
             self.commands
-                .spawn((
-                    transform,
-                    Mesh2d(self.handles.square.clone()),
-                    MeshMaterial2d(self.style.fill.to_handle(&self.handles.colour_handles)),
-                ))
+                .spawn((transform, Sprite::from_color(self.style.fill, scale)))
                 .id()
         }
     }
@@ -225,70 +219,6 @@ impl UiCommands<'_, '_> {
         menus
     }
 
-    fn character_menu_raise(&mut self, character_menu: u8) {
-        let character_menu = self.entities.character_menus[character_menu as usize];
-        for entity in [
-            character_menu.bottom,
-            character_menu.top,
-            character_menu.text,
-        ] {
-            self.transforms.get_mut(entity).unwrap().translation.y += CHARACTER_HALF * 300.;
-        }
-    }
-    fn character_menu_lower(&mut self, character_menu: u8) {
-        let character_menu = self.entities.character_menus[character_menu as usize];
-        for entity in [
-            character_menu.bottom,
-            character_menu.top,
-            character_menu.text,
-        ] {
-            self.transforms.get_mut(entity).unwrap().translation.y -= CHARACTER_HALF * 300.;
-        }
-    }
-
-    fn character_menus(&mut self) -> Vec<CharacterMenu> {
-        let previous_style = self.style.clone();
-
-        let character_menus = (0..3)
-            .map(|index| {
-                let offset = if index == 0 { 0. } else { CHARACTER_HALF };
-
-                self.depth(2.);
-                self.outline(Some((Colour::Blue, 2.)));
-                self.fill(Colour::Black);
-                let bottom = self.rectangle(
-                    (
-                        1. / 3. * index as f32,
-                        main_box::MAX_Y - CHARACTER_HALF + offset,
-                    ),
-                    (1. / 3. * (index + 1) as f32, main_box::MAX_Y + offset),
-                );
-                let top = self.rectangle(
-                    (
-                        1. / 3. * index as f32,
-                        main_box::MAX_Y - CHARACTER_HALF * 2. + offset,
-                    ),
-                    (
-                        1. / 3. * (index + 1) as f32,
-                        main_box::MAX_Y - CHARACTER_HALF + offset,
-                    ),
-                );
-                let text = self.text(
-                    (
-                        1. / 3. * index as f32 + 0.04,
-                        main_box::MAX_Y - CHARACTER_HALF * 1.5 + offset,
-                    ),
-                    "GASTER (HP 1/1)",
-                );
-
-                CharacterMenu { top, bottom, text }
-            })
-            .collect();
-
-        self.style = previous_style;
-        character_menus
-    }
-
     fn highlight_off_option_under_name(&mut self, entity: Entity) {
         self.sprites
             .get_mut(entity)
@@ -313,15 +243,8 @@ impl UiCommands<'_, '_> {
 #[derive(Clone)]
 struct Style {
     depth: f32,
-    fill: Colour,
-    outline: Option<(Colour, f32)>,
-}
-
-#[derive(Clone, Copy)]
-struct CharacterMenu {
-    top: Entity,
-    bottom: Entity,
-    text: Entity,
+    fill: Color,
+    outline: Option<(Color, f32)>,
 }
 
 fn insert_resources(
@@ -350,9 +273,6 @@ fn insert_resources(
         colour_handles: GeneratedColourHandles::new(&mut materials),
     });
     commands.insert_resource(Ui::Empty);
-    commands.insert_resource(Entities {
-        character_menus: vec![],
-    });
 }
 
 mod main_box {
@@ -373,40 +293,43 @@ fn update_ui(
     mut battle_requests: MessageReader<StartBattle>,
     mut battles: Local<Vec<StartBattle>>,
     handles: Res<Handles>,
-    mut entities: ResMut<Entities>,
+    mut characters: ResMut<Characters>,
     mut ui: ResMut<Ui>,
     commands: Commands,
     input: Res<Input>,
     sprites: Query<&'static mut Sprite>,
     transforms: Query<&'static mut Transform>,
-    mut message: MessageWriter<BattleMessage>,
+    mut message: MessageMutator<BattleMessage>,
+    mut audio_message: MessageWriter<AudioMessage>,
 ) {
     battles.extend(battle_requests.read().cloned());
-    let Some(battle) = battles.first() else {
+    let Some(_) = battles.first() else {
         return;
     };
 
     let mut commands = UiCommands {
         commands,
         handles: &handles,
-        entities: &mut entities,
+        characters: &mut characters,
         sprites,
         transforms,
         style: Style {
             depth: 2.,
-            fill: Colour::Black,
+            fill: BLACK.into(),
             outline: None,
         },
     };
 
     *ui = match core::mem::replace(&mut *ui, Ui::Empty) {
         Ui::Empty => {
+            commands.characters_setup();
+
             // Main box.
             commands.depth(5.);
             commands.rectangle((0., main_box::main_box::MAX_Y), (1., 1.));
 
             // Main box outline.
-            commands.fill(Colour::DeepPurple);
+            commands.fill(DEEP_PURPLE);
             commands.rectangle(
                 (0., main_box::main_box::MAX_Y - main_box::outline::HEIGHT),
                 (1., main_box::main_box::MAX_Y),
@@ -415,8 +338,6 @@ fn update_ui(
             let menus = commands.menus(0);
 
             commands.text((0.05, main_box::MAX_Y + 0.05), "* Floradinn florads in!\n* Floradinn florads in!\n* Floradinn florads in!\n* Is that a cut on your face, or part of your eye?\n* The gash weaves down as if you cry.");
-
-            commands.entities.character_menus = commands.character_menus();
 
             Ui::Character {
                 character: 0,
@@ -430,6 +351,7 @@ fn update_ui(
             mut menus,
         } => {
             if input.pressed::<UiMove>() {
+                audio_message.write(AudioMessage::Sound("snd_menumove.ogg", default()));
                 info!("Held = {:?}", input.held::<UiMove>());
                 commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
 
@@ -442,6 +364,7 @@ fn update_ui(
             }
 
             if input.pressed_old(KeyCode::Enter) {
+                audio_message.write(AudioMessage::Sound("snd_select.wav", default()));
                 character += 1;
                 menu_hovered = 0;
 
@@ -501,25 +424,6 @@ fn despawn(despawn: Query<(Entity, &mut Despawn)>, mut commands: Commands, time:
     }
 }
 
-#[derive(Component, Default)]
-#[component(on_add = Self::on_add)]
-pub struct Soul;
-impl Soul {
-    fn on_add(mut world: DeferredWorld, context: HookContext) {
-        world.commands().entity(context.entity).observe(
-            |on: On<CollisionStart>, mut commands: Commands, danger: Query<&Danger>| {
-                let Ok(danger) = danger.get(on.collider2) else {
-                    return;
-                };
-
-                if danger.despawn_on_collision {
-                    commands.entity(on.collider2).despawn();
-                }
-            },
-        );
-    }
-}
-
 #[derive(Message, Clone)]
 pub struct StartBattle {}
 
@@ -549,6 +453,8 @@ impl SystemParameterLogicExtension for BattleMessageLogic {
     ) {
         self.enemy_turn_start = false;
         self.enemy_turn_end = false;
+
+        message.read();
 
         for message in message.read() {
             match message {

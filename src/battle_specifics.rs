@@ -1,5 +1,5 @@
 use crate::{
-    battle::{Battle, Danger, Soul, StartBattle},
+    battle::{Battle, Danger, StartBattle, soul::Soul},
     fabrik::Nodes,
     input::{Input, SoulMove},
 };
@@ -197,8 +197,6 @@ fn kaw_kaw(
                 phase.0 = phases[phase.1 as usize]();
 
                 if phase.1 == 0 || phase.1 == 4 {
-                    info!("Test!");
-
                     let quantity = 10;
                     for i in 0..quantity {
                         let angle = (360. / quantity as f32 * i as f32).to_radians();
