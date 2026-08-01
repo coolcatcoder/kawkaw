@@ -275,7 +275,7 @@ fn update_ui(
 
     *ui = match core::mem::replace(&mut *ui, Ui::Empty) {
         Ui::Empty => {
-            commands.characters_setup();
+            //commands.characters_setup();
 
             // Main box.
             commands.depth(5.);
@@ -304,7 +304,7 @@ fn update_ui(
             mut menus,
         } => {
             if input.pressed::<UiMove>() {
-                audio_message.write(AudioMessage::Sound("snd_menumove.ogg", default()));
+                audio_message.write(AudioMessage::Sound("snd_menumove_stereo.wav", default()));
                 info!("Held = {:?}", input.held::<UiMove>());
                 commands.highlight_off_option_under_name(menus[menu_hovered as usize]);
 

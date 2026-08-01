@@ -1,5 +1,5 @@
 use crate::{
-    battle::{Battle, Danger, StartBattle, soul::Soul},
+    battle::{Battle, Danger, StartBattle, character::Character, soul::Soul},
     fabrik::Nodes,
     input::{Input, SoulMove},
 };
@@ -17,6 +17,11 @@ pub fn plugin(app: &mut App) {
 fn start_battle(mut commands: Commands, mut battle: MessageWriter<StartBattle>) {
     commands.spawn(RedSoul);
     commands.spawn(Arena);
+
+    commands.spawn(Character);
+    commands.spawn(Character);
+    commands.spawn(Character);
+
     battle.write(StartBattle {});
 }
 
