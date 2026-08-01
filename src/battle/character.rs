@@ -114,28 +114,28 @@ impl UiCommands<'_, '_> {
     //     self.style = previous_style;
     // }
 
-    fn health_text_suspicious(&mut self, character_index: u8) {
-        let character = &self.characters.slots[character_index as usize];
-        self.commands.entity(character.text).try_despawn();
-        let parent = character.ui_parent;
-        let health = character.health;
+    // fn health_text_suspicious(&mut self, character_index: u8) {
+    //     let character = &self.characters.slots[character_index as usize];
+    //     self.commands.entity(character.text).try_despawn();
+    //     let parent = character.ui_parent;
+    //     let health = character.health;
 
-        let text = self.text(
-            (
-                1. / 3. * character_index as f32 + 0.04,
-                main_box::MAX_Y - CHARACTER_HALF * 0.5,
-            ),
-            &format!("GASTER (HP {health}/1)"),
-        );
+    //     let text = self.text(
+    //         (
+    //             1. / 3. * character_index as f32 + 0.04,
+    //             main_box::MAX_Y - CHARACTER_HALF * 0.5,
+    //         ),
+    //         &format!("GASTER (HP {health}/1)"),
+    //     );
 
-        self.commands.entity(parent).add_child(text);
-        self.characters.slots[character_index as usize].text = text;
-    }
+    //     self.commands.entity(parent).add_child(text);
+    //     self.characters.slots[character_index as usize].text = text;
+    // }
 
-    pub fn health_suspicious(&mut self, character_index: u8, mut f: impl FnMut(&mut u32)) {
-        f(&mut self.characters.slots[character_index as usize].health);
-        self.health_text_suspicious(character_index);
-    }
+    // pub fn health_suspicious(&mut self, character_index: u8, mut f: impl FnMut(&mut u32)) {
+    //     f(&mut self.characters.slots[character_index as usize].health);
+    //     self.health_text_suspicious(character_index);
+    // }
 }
 
 #[derive(Component)]

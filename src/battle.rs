@@ -1,10 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::{
-    battle::{
-        audio::AudioMessage,
-        character::{CharacterUiMessage, Characters},
-    },
+    battle::{audio::AudioMessage, character::CharacterUiMessage},
     input::{Input, UiMove},
 };
 
@@ -63,9 +60,7 @@ enum Ui {
 struct UiCommands<'w, 's> {
     commands: Commands<'w, 's>,
     handles: &'w Handles,
-    characters: &'w mut Characters,
     sprites: Query<'w, 's, &'static mut Sprite>,
-    transforms: Query<'w, 's, &'static mut Transform>,
 
     // For drawing rectangles.
     style: Style,
@@ -245,12 +240,10 @@ fn update_ui(
     mut battle_requests: MessageReader<StartBattle>,
     mut battles: Local<Vec<StartBattle>>,
     handles: Res<Handles>,
-    mut characters: ResMut<Characters>,
     mut ui: ResMut<Ui>,
     commands: Commands,
     input: Res<Input>,
     sprites: Query<&'static mut Sprite>,
-    transforms: Query<&'static mut Transform>,
     mut message: MessageMutator<BattleMessage>,
     mut audio_message: MessageWriter<AudioMessage>,
     mut character_ui_message: MessageWriter<CharacterUiMessage>,
@@ -263,9 +256,7 @@ fn update_ui(
     let mut commands = UiCommands {
         commands,
         handles: &handles,
-        characters: &mut characters,
         sprites,
-        transforms,
         style: Style {
             depth: 2.,
             fill: BLACK.into(),
