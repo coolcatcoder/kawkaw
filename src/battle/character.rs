@@ -1,4 +1,4 @@
-use crate::battle::{CHARACTER_HALF, UiCommands, draw::Draw, main_box};
+use crate::battle::{BattleMessage, CHARACTER_HALF, Ui, UiCommands, draw::Draw, main_box};
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
     prelude::*,
@@ -14,15 +14,22 @@ pub fn plugin(app: &mut App) {
 pub struct Characters {
     slots: Vec<CharacterParasite>,
 }
+impl Characters {
+    pub fn quantity(&self) -> u8 {
+        self.slots.len().strict_cast()
+    }
+}
 
 #[derive(Message)]
 pub enum CharacterUiMessage {
+    RaiseNext,
     Raise(u8),
     Lower(u8),
 }
 impl CharacterUiMessage {
     fn system(
         mut message: MessageReader<Self>,
+        mut battle_message: MessageWriter<BattleMessage>,
         characters: Res<Characters>,
         mut transform: Query<&mut Transform>,
     ) {
@@ -44,6 +51,28 @@ impl CharacterUiMessage {
                         .translation
                         .y -= CHARACTER_HALF * 300.;
                 }
+                Self::RaiseNext => {
+                    let mut previous = Vec2::ZERO;
+
+                    if let Some(parasite) = characters.slots.last()
+                        && let Ok(transform) = transform.get(parasite.ui_parent)
+                        && transform.translation.y > 5.
+                    {
+                        println!("Trigger?");
+                        battle_message.write(BattleMessage::EnemyTurnStart);
+                    }
+
+                    for parasite in &characters.slots {
+                        let transform: &mut Transform =
+                            &mut transform.get_mut(parasite.ui_parent).unwrap();
+
+                        let next_previous = transform.translation.xy();
+                        transform.translation.x = previous.x;
+                        transform.translation.y = previous.y;
+
+                        previous = next_previous;
+                    }
+                }
             }
         }
     }
@@ -62,82 +91,6 @@ fn characters(mut commands: Commands) {
     commands.insert_resource(Characters { slots: vec![] });
 }
 
-impl UiCommands<'_, '_> {
-    // pub fn characters_setup(&mut self) {
-    //     let previous_style = self.style.clone();
-
-    //     let slots = (0..3)
-    //         .map(|index| {
-    //             let offset = if index == 0 { 0. } else { CHARACTER_HALF };
-
-    //             self.depth(2.);
-    //             self.outline(Some((BLUE, 2.)));
-    //             self.fill(BLACK);
-    //             let bottom = self.rectangle(
-    //                 (
-    //                     1. / 3. * index as f32,
-    //                     main_box::MAX_Y - CHARACTER_HALF + offset,
-    //                 ),
-    //                 (1. / 3. * (index + 1) as f32, main_box::MAX_Y + offset),
-    //             );
-    //             let top = self.rectangle(
-    //                 (
-    //                     1. / 3. * index as f32,
-    //                     main_box::MAX_Y - CHARACTER_HALF * 2. + offset,
-    //                 ),
-    //                 (
-    //                     1. / 3. * (index + 1) as f32,
-    //                     main_box::MAX_Y - CHARACTER_HALF + offset,
-    //                 ),
-    //             );
-
-    //             let parent = self
-    //                 .commands
-    //                 .spawn((Visibility::Visible, Transform::default()))
-    //                 .add_children(&[top, bottom])
-    //                 .id();
-
-    //             CharacterParasite {
-    //                 host: Entity::PLACEHOLDER,
-    //                 health: 100,
-    //                 ui_parent: parent,
-    //                 text: Entity::PLACEHOLDER,
-    //             }
-    //         })
-    //         .collect();
-    //     self.characters.slots = slots;
-
-    //     for i in 0..3 {
-    //         self.health_text(i);
-    //     }
-
-    //     self.style = previous_style;
-    // }
-
-    // fn health_text_suspicious(&mut self, character_index: u8) {
-    //     let character = &self.characters.slots[character_index as usize];
-    //     self.commands.entity(character.text).try_despawn();
-    //     let parent = character.ui_parent;
-    //     let health = character.health;
-
-    //     let text = self.text(
-    //         (
-    //             1. / 3. * character_index as f32 + 0.04,
-    //             main_box::MAX_Y - CHARACTER_HALF * 0.5,
-    //         ),
-    //         &format!("GASTER (HP {health}/1)"),
-    //     );
-
-    //     self.commands.entity(parent).add_child(text);
-    //     self.characters.slots[character_index as usize].text = text;
-    // }
-
-    // pub fn health_suspicious(&mut self, character_index: u8, mut f: impl FnMut(&mut u32)) {
-    //     f(&mut self.characters.slots[character_index as usize].health);
-    //     self.health_text_suspicious(character_index);
-    // }
-}
-
 #[derive(Component)]
 pub struct Character;
 
@@ -146,6 +99,8 @@ fn handle_party(
     mut party: ResMut<Characters>,
     mut draw: Draw,
     mut commands: Commands,
+    ui: Res<Ui>,
+    mut character_ui_message: MessageWriter<CharacterUiMessage>,
 ) {
     // See if any characters have been removed.
     for parasite in &party.slots {
@@ -170,28 +125,25 @@ fn handle_party(
         }
 
         let index = party.slots.len();
-        let offset = if index == 0 { 0. } else { CHARACTER_HALF };
 
         draw.depth(2.);
         draw.outline(Some((BLUE, 2.)));
         draw.fill(BLACK);
         let bottom = draw.rectangle(
-            (
-                1. / 3. * index as f32,
-                main_box::MAX_Y - CHARACTER_HALF + offset,
-            ),
-            (1. / 3. * (index + 1) as f32, main_box::MAX_Y + offset),
-        );
-        let top = draw.rectangle(
-            (
-                1. / 3. * index as f32,
-                main_box::MAX_Y - CHARACTER_HALF * 2. + offset,
-            ),
+            (1. / 3. * index as f32, main_box::MAX_Y),
             (
                 1. / 3. * (index + 1) as f32,
-                main_box::MAX_Y - CHARACTER_HALF + offset,
+                main_box::MAX_Y + CHARACTER_HALF,
             ),
         );
+        let top = draw.rectangle(
+            (1. / 3. * index as f32, main_box::MAX_Y - CHARACTER_HALF),
+            (1. / 3. * (index + 1) as f32, main_box::MAX_Y),
+        );
+
+        if matches!(*ui, Ui::Empty | Ui::Character { .. }) && index == 0 {
+            character_ui_message.write(CharacterUiMessage::Raise(0));
+        }
 
         let parent = commands
             .spawn((Visibility::Visible, Transform::default()))

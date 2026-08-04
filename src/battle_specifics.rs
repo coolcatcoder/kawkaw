@@ -11,16 +11,16 @@ use bevy::{
 
 pub fn plugin(app: &mut App) {
     app.add_systems(Startup, (start_battle, souls))
-        .add_systems(Update, (RedSoul::system, arena, kaw_kaw));
+        .add_systems(Update, (RedSoul::system, arena, kaw_kaw, delay));
 }
 
 fn start_battle(mut commands: Commands, mut battle: MessageWriter<StartBattle>) {
     commands.spawn(RedSoul);
     commands.spawn(Arena);
 
-    commands.spawn(Character);
-    commands.spawn(Character);
-    commands.spawn(Character);
+    commands.spawn(Delay(3., |commands| {
+        commands.spawn(Character);
+    }));
 
     battle.write(StartBattle {});
 }
@@ -233,6 +233,18 @@ fn kaw_kaw(
                     }
                 }
             }
+        }
+    }
+}
+
+#[derive(Component)]
+struct Delay(f32, fn(&mut Commands));
+fn delay(delay: Query<(Entity, &mut Delay)>, time: Res<Time>, mut commands: Commands) {
+    for (entity, mut delay) in delay {
+        delay.0 -= time.delta_secs();
+        if delay.0 <= 0. {
+            delay.1(&mut commands);
+            commands.entity(entity).despawn();
         }
     }
 }

@@ -1,7 +1,13 @@
+//! Terms:
+//! Each character is in a slot.
+
 use std::ops::{Deref, DerefMut};
 
 use crate::{
-    battle::{audio::AudioMessage, character::CharacterUiMessage},
+    battle::{
+        audio::AudioMessage,
+        character::{CharacterUiMessage, Characters},
+    },
     input::{Input, UiMove},
 };
 
@@ -25,16 +31,22 @@ use bevy::{
 // also make three heads from off screen do circles
 
 mod audio;
+mod behaviour;
 pub mod character;
 mod draw;
 pub mod soul;
 
 pub fn plugin(app: &mut App) {
-    app.add_plugins((character::plugin, audio::plugin, soul::plugin))
-        .add_message::<StartBattle>()
-        .add_message::<BattleMessage>()
-        .add_systems(Startup, insert_resources)
-        .add_systems(Update, (update_ui, despawn));
+    app.add_plugins((
+        character::plugin,
+        audio::plugin,
+        soul::plugin,
+        behaviour::plugin,
+    ))
+    .add_message::<StartBattle>()
+    .add_message::<BattleMessage>()
+    .add_systems(Startup, insert_resources)
+    .add_systems(Update, (update_ui, despawn));
 }
 
 const DEEP_PURPLE: Srgba = Srgba::rgb(0.2, 0.125, 0.2);
@@ -247,6 +259,7 @@ fn update_ui(
     mut message: MessageMutator<BattleMessage>,
     mut audio_message: MessageWriter<AudioMessage>,
     mut character_ui_message: MessageWriter<CharacterUiMessage>,
+    characters: Res<Characters>,
 ) {
     battles.extend(battle_requests.read().cloned());
     let Some(_) = battles.first() else {
@@ -318,12 +331,13 @@ fn update_ui(
 
                 character_ui_message.write(CharacterUiMessage::Lower(character - 1));
 
-                if character == 3 {
+                if character == characters.quantity() {
                     message.write(BattleMessage::EnemyTurnStart);
                     Some(Ui::EnemyTurn)
                 } else {
                     menus = commands.menus(character);
                     character_ui_message.write(CharacterUiMessage::Raise(character));
+                    //character_ui_message.write(CharacterUiMessage::RaiseNext);
                     None
                 }
             } else {
