@@ -45,6 +45,7 @@ pub fn plugin(app: &mut App) {
     ))
     .add_message::<StartBattle>()
     .add_message::<BattleMessage>()
+    .add_message::<EnemyTurnMessage>()
     .add_systems(Startup, insert_resources)
     .add_systems(Update, (update_ui, despawn));
 }
@@ -257,6 +258,7 @@ fn update_ui(
     input: Res<Input>,
     sprites: Query<&'static mut Sprite>,
     mut message: MessageMutator<BattleMessage>,
+    mut enemy_turn: EnemyTurn,
     mut audio_message: MessageWriter<AudioMessage>,
     mut character_ui_message: MessageWriter<CharacterUiMessage>,
     characters: Res<Characters>,
@@ -333,6 +335,7 @@ fn update_ui(
 
                 if character == characters.quantity() {
                     message.write(BattleMessage::EnemyTurnStart);
+                    enemy_turn.write(EnemyTurnMessage::Start);
                     Some(Ui::EnemyTurn)
                 } else {
                     menus = commands.menus(character);
@@ -392,8 +395,59 @@ pub enum BattleMessage {
     EnemyTurnEnd,
 }
 
+#[derive(Message)]
+pub enum EnemyTurnMessage {
+    Start,
+    End,
+}
+
 #[derive(SystemParam)]
-pub struct Battle<'w, 's> {
+pub struct EnemyTurn<'w, 's> {
+    inner: CustomLogic<'w, 's, IsEnemyTurn>,
+}
+impl EnemyTurn<'_, '_> {
+    pub fn read(&self, message: EnemyTurnMessage) -> bool {
+        match message {
+            EnemyTurnMessage::Start => self.inner.0.1.0,
+            EnemyTurnMessage::End => self.inner.0.2.0,
+        }
+    }
+
+    pub fn write(&mut self, message: EnemyTurnMessage) {
+        self.inner.0.0.write(message);
+    }
+}
+
+#[derive(Default)]
+struct IsEnemyTurn(bool);
+impl SystemParameterLogicExtension for IsEnemyTurn {
+    type Parameter<'w, 's> = (
+        MessageMutator<'w, 's, EnemyTurnMessage>,
+        Temporary<bool>,
+        Temporary<bool>,
+    );
+
+    fn logic<'w, 's>(
+        &mut self,
+        (message, enemy_turn_start, enemy_turn_end): &mut <Self::Parameter<'static, 'static> as SystemParam>::Item<'w, 's>,
+    ) {
+        for message in message.read() {
+            match message {
+                EnemyTurnMessage::Start => {
+                    enemy_turn_start.0 = true;
+                    self.0 = true;
+                }
+                EnemyTurnMessage::End => {
+                    enemy_turn_end.0 = true;
+                    self.0 = false;
+                }
+            }
+        }
+    }
+}
+
+#[derive(SystemParam)]
+pub struct BattleOld<'w, 's> {
     messages: CustomLogic<'w, 's, BattleMessageLogic>,
 }
 
@@ -413,8 +467,6 @@ impl SystemParameterLogicExtension for BattleMessageLogic {
         self.enemy_turn_start = false;
         self.enemy_turn_end = false;
 
-        message.read();
-
         for message in message.read() {
             match message {
                 BattleMessage::EnemyTurnStart => {
@@ -430,7 +482,7 @@ impl SystemParameterLogicExtension for BattleMessageLogic {
     }
 }
 
-impl Battle<'_, '_> {
+impl BattleOld<'_, '_> {
     pub fn enemy_turn_start(&mut self) -> bool {
         self.messages.1.enemy_turn_start
     }
@@ -528,6 +580,8 @@ const _: () = {
     struct FetchState<Logic: SystemParameterLogicExtension, >{
         state: <__StructFieldsAlias:: <'static,'static,Logic>as ::bevy::ecs::system::SystemParam> ::State,
     }
+
+    #[deny(clippy::missing_trait_methods)]
     unsafe impl<Logic: SystemParameterLogicExtension> ::bevy::ecs::system::SystemParam
         for CustomLogic<'_, '_, Logic>
     {

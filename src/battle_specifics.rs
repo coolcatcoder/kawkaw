@@ -1,5 +1,8 @@
 use crate::{
-    battle::{Battle, Danger, StartBattle, character::Character, soul::Soul},
+    battle::{
+        BattleMessage, BattleOld, Danger, EnemyTurn, EnemyTurnMessage, StartBattle,
+        character::Character, soul::Soul,
+    },
     fabrik::Nodes,
     input::{Input, SoulMove},
 };
@@ -10,17 +13,21 @@ use bevy::{
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, (start_battle, souls))
-        .add_systems(Update, (RedSoul::system, arena, kaw_kaw, delay));
+    app.add_systems(Startup, (start_battle, souls)).add_systems(
+        Update,
+        (RedSoul::system, arena, kaw_kaw, delay, turn_seconds),
+    );
 }
 
 fn start_battle(mut commands: Commands, mut battle: MessageWriter<StartBattle>) {
     commands.spawn(RedSoul);
     commands.spawn(Arena);
 
-    commands.spawn(Delay(3., |commands| {
+    commands.spawn(Delay(1., |commands| {
         commands.spawn(Character);
     }));
+
+    commands.spawn(TurnSeconds(3.));
 
     battle.write(StartBattle {});
 }
@@ -55,7 +62,7 @@ fn souls(
 struct RedSoul;
 impl RedSoul {
     fn system(
-        mut battle: Battle,
+        mut battle: BattleOld,
         red_soul: Query<Entity, With<RedSoul>>,
         velocity: Query<&mut LinearVelocity, With<RedSoul>>,
         soul_handles: Res<SoulHandles>,
@@ -101,7 +108,7 @@ impl RedSoul {
 
 #[derive(Component)]
 struct Arena;
-fn arena(mut battle: Battle, entity: Query<Entity, With<Arena>>, mut commands: Commands) {
+fn arena(mut battle: BattleOld, entity: Query<Entity, With<Arena>>, mut commands: Commands) {
     if battle.enemy_turn_start() {
         for entity in entity {
             commands
@@ -158,7 +165,7 @@ impl Default for KawkawPhase {
 }
 
 fn kaw_kaw(
-    mut battle: Battle,
+    mut battle: BattleOld,
     nodes: Query<&mut Nodes>,
     time: Res<Time>,
     mut phase: Local<KawkawPhase>,
@@ -245,6 +252,28 @@ fn delay(delay: Query<(Entity, &mut Delay)>, time: Res<Time>, mut commands: Comm
         if delay.0 <= 0. {
             delay.1(&mut commands);
             commands.entity(entity).despawn();
+        }
+    }
+}
+
+#[derive(Component)]
+struct TurnSeconds(f32);
+fn turn_seconds(
+    mut enemy_turn: EnemyTurn,
+    mut old: MessageWriter<BattleMessage>,
+    turn_seconds: Query<(Entity, &mut TurnSeconds)>,
+    time: Res<Time>,
+    mut commands: Commands,
+) {
+    if enemy_turn.read(EnemyTurnMessage::Start) {
+        info!("Test!");
+    }
+
+    for (entity, mut turn_seconds) in turn_seconds {
+        turn_seconds.0 -= time.delta_secs();
+        if turn_seconds.0 <= 0. {
+            commands.entity(entity).despawn();
+            old.write(BattleMessage::EnemyTurnEnd);
         }
     }
 }

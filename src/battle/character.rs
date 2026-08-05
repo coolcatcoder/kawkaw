@@ -1,4 +1,4 @@
-use crate::battle::{BattleMessage, CHARACTER_HALF, Ui, UiCommands, draw::Draw, main_box};
+use crate::battle::{BattleMessage, CHARACTER_HALF, Ui, draw::Draw, main_box};
 use bevy::{
     color::palettes::css::{BLACK, BLUE},
     prelude::*,
@@ -22,7 +22,6 @@ impl Characters {
 
 #[derive(Message)]
 pub enum CharacterUiMessage {
-    RaiseNext,
     Raise(u8),
     Lower(u8),
 }
@@ -50,28 +49,6 @@ impl CharacterUiMessage {
                         .unwrap()
                         .translation
                         .y -= CHARACTER_HALF * 300.;
-                }
-                Self::RaiseNext => {
-                    let mut previous = Vec2::ZERO;
-
-                    if let Some(parasite) = characters.slots.last()
-                        && let Ok(transform) = transform.get(parasite.ui_parent)
-                        && transform.translation.y > 5.
-                    {
-                        println!("Trigger?");
-                        battle_message.write(BattleMessage::EnemyTurnStart);
-                    }
-
-                    for parasite in &characters.slots {
-                        let transform: &mut Transform =
-                            &mut transform.get_mut(parasite.ui_parent).unwrap();
-
-                        let next_previous = transform.translation.xy();
-                        transform.translation.x = previous.x;
-                        transform.translation.y = previous.y;
-
-                        previous = next_previous;
-                    }
                 }
             }
         }
