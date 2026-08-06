@@ -24,7 +24,11 @@ impl Default for Style {
     }
 }
 
-impl Draw<'_, '_> {
+impl<'w, 's> Draw<'w, 's> {
+    pub fn commands(&mut self) -> &mut Commands<'w, 's> {
+        &mut self.commands
+    }
+
     pub fn outline(&mut self, outline: Option<(impl Into<Color>, f32)>) {
         self.style.outline = outline.map(|(colour, thickness)| (colour.into(), thickness));
     }
@@ -70,12 +74,10 @@ impl Draw<'_, '_> {
         let to = Vec2::new(to.0, to.1);
 
         let scale = (from - to).abs() * Vec2::new(400., 300.);
-        info!("{scale}");
 
         let translation = from.min(to) * Vec2::new(400., -300.)
             + Vec2::new(-200., 150.)
             + Vec2::new(scale.x * 0.5, scale.y * -0.5);
-        info!("{translation}");
 
         let transform = Transform {
             translation: translation.extend(self.style.depth),

@@ -5,9 +5,9 @@ use bevy::{
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_message::<CharacterUiMessage>()
+    app.add_message::<SlotMessage>()
         .add_systems(Startup, characters)
-        .add_systems(Update, (CharacterUiMessage::system, handle_party));
+        .add_systems(Update, (SlotMessage::system, handle_party).chain());
 }
 
 #[derive(Resource)]
@@ -21,11 +21,11 @@ impl Characters {
 }
 
 #[derive(Message)]
-pub enum CharacterUiMessage {
+pub enum SlotMessage {
     Raise(u8),
     Lower(u8),
 }
-impl CharacterUiMessage {
+impl SlotMessage {
     fn system(
         mut message: MessageReader<Self>,
         mut battle_message: MessageWriter<BattleMessage>,
@@ -77,7 +77,7 @@ fn handle_party(
     mut draw: Draw,
     mut commands: Commands,
     ui: Res<Ui>,
-    mut character_ui_message: MessageWriter<CharacterUiMessage>,
+    mut character_ui_message: MessageWriter<SlotMessage>,
 ) {
     // See if any characters have been removed.
     for parasite in &party.slots {
@@ -119,7 +119,7 @@ fn handle_party(
         );
 
         if matches!(*ui, Ui::Empty | Ui::Character { .. }) && index == 0 {
-            character_ui_message.write(CharacterUiMessage::Raise(0));
+            character_ui_message.write(SlotMessage::Raise(0));
         }
 
         let parent = commands

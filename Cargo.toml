@@ -18,6 +18,7 @@ bevy = { version = "0.19", default-features = false, features = [
     "webgl2",
     "bevy_gilrs",
     "debug",
+    "track_location",
     "bevy_audio",
     "wav",
     "vorbis",

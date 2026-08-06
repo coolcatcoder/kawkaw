@@ -26,8 +26,11 @@ fn start_battle(mut commands: Commands, mut battle: MessageWriter<StartBattle>) 
     commands.spawn(Delay(1., |commands| {
         commands.spawn(Character);
     }));
+    commands.spawn(Delay(1.1, |commands| {
+        commands.spawn(Character);
+    }));
 
-    commands.spawn(TurnSeconds(3.));
+    //commands.spawn(TurnSeconds(3.));
 
     battle.write(StartBattle {});
 }

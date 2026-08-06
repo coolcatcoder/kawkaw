@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 use crate::{
     battle::{
         audio::AudioMessage,
-        character::{CharacterUiMessage, Characters},
+        character::{Characters, SlotMessage},
     },
     input::{Input, UiMove},
 };
@@ -159,7 +159,7 @@ impl UiCommands<'_, '_> {
         let previous_style = self.style.clone();
 
         self.depth(6.);
-        let menus = (0..5)
+        let menus: Vec<Entity> = (0..5)
             .map(|i| {
                 let sprite_index = if i == 0 { 0 } else { i + 12 };
 
@@ -180,6 +180,11 @@ impl UiCommands<'_, '_> {
                 )
             })
             .collect();
+
+        // UiCommands is destined to be replaced. This code hides the menus from view. We can't remove the function as too many pieces depend upon it.
+        for menu in menus.iter().copied() {
+            self.commands.entity(menu).insert(Visibility::Hidden);
+        }
 
         self.style = previous_style;
         menus
@@ -260,7 +265,7 @@ fn update_ui(
     mut message: MessageMutator<BattleMessage>,
     mut enemy_turn: EnemyTurn,
     mut audio_message: MessageWriter<AudioMessage>,
-    mut character_ui_message: MessageWriter<CharacterUiMessage>,
+    mut character_ui_message: MessageWriter<SlotMessage>,
     characters: Res<Characters>,
 ) {
     battles.extend(battle_requests.read().cloned());
@@ -331,7 +336,7 @@ fn update_ui(
                     commands.commands.entity(*entity).despawn();
                 }
 
-                character_ui_message.write(CharacterUiMessage::Lower(character - 1));
+                character_ui_message.write(SlotMessage::Lower(character - 1));
 
                 if character == characters.quantity() {
                     message.write(BattleMessage::EnemyTurnStart);
@@ -339,7 +344,7 @@ fn update_ui(
                     Some(Ui::EnemyTurn)
                 } else {
                     menus = commands.menus(character);
-                    character_ui_message.write(CharacterUiMessage::Raise(character));
+                    character_ui_message.write(SlotMessage::Raise(character));
                     //character_ui_message.write(CharacterUiMessage::RaiseNext);
                     None
                 }
