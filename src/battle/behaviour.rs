@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use bevy::prelude::*;
 
 use crate::battle::{
@@ -8,15 +10,24 @@ use crate::battle::{
 };
 
 pub fn plugin(app: &mut App) {
-    app.add_systems(Startup, insert_behaviour)
-        .add_systems(Update, slot_message);
+    app.add_message::<BehaviourMessage>()
+        .add_systems(Startup, insert_behaviour)
+        .add_systems(Update, (slot_message, behaviour_message));
 }
 
 #[derive(Resource)]
 struct Behaviour {
     parent: Entity,
-    behaviours: [Entity; 5],
+    list: [Entity; 5],
 }
+impl Index<u8> for Behaviour {
+    type Output = Entity;
+
+    fn index(&self, index: u8) -> &Self::Output {
+        &self.list[usize::from(index)]
+    }
+}
+
 fn insert_behaviour(
     mut draw: Draw,
     asset_server: Res<AssetServer>,
@@ -63,7 +74,7 @@ fn insert_behaviour(
 
     draw.commands().insert_resource(Behaviour {
         parent,
-        behaviours: menus,
+        list: menus,
     });
 }
 
@@ -84,6 +95,41 @@ fn slot_message(
                 let (_, mut visibility) =
                     transform_and_visibility.get_mut(behaviour.parent).unwrap();
                 *visibility = Visibility::Hidden;
+            }
+        }
+    }
+}
+
+#[derive(Message)]
+pub enum BehaviourMessage {
+    Highlight(u8),
+    Lowlight(u8),
+}
+
+fn behaviour_message(
+    mut behaviour_message: MessageReader<BehaviourMessage>,
+    behaviour: Res<Behaviour>,
+    mut sprite: Query<&mut Sprite>,
+) {
+    for behaviour_message in behaviour_message.read() {
+        match behaviour_message {
+            BehaviourMessage::Highlight(index) => {
+                sprite
+                    .get_mut(behaviour[*index])
+                    .unwrap()
+                    .texture_atlas
+                    .as_mut()
+                    .unwrap()
+                    .index -= 12;
+            }
+            BehaviourMessage::Lowlight(index) => {
+                sprite
+                    .get_mut(behaviour[*index])
+                    .unwrap()
+                    .texture_atlas
+                    .as_mut()
+                    .unwrap()
+                    .index += 12;
             }
         }
     }

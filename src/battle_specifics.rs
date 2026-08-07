@@ -262,7 +262,7 @@ fn delay(delay: Query<(Entity, &mut Delay)>, time: Res<Time>, mut commands: Comm
 #[derive(Component)]
 struct TurnSeconds(f32);
 fn turn_seconds(
-    mut enemy_turn: EnemyTurn,
+    enemy_turn: EnemyTurn,
     mut old: MessageWriter<BattleMessage>,
     turn_seconds: Query<(Entity, &mut TurnSeconds)>,
     time: Res<Time>,

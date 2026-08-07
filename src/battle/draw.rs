@@ -1,6 +1,6 @@
 use bevy::{color::palettes::css::BLACK, ecs::system::SystemParam, prelude::*};
 
-use crate::battle::Temporary;
+use crate::{battle::Temporary, text::Text};
 
 #[derive(SystemParam)]
 pub struct Draw<'w, 's> {
