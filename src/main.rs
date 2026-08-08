@@ -1,5 +1,7 @@
 #![allow(patterns_in_fns_without_body)]
 #![feature(integer_casts)]
+#![feature(splat)]
+#![expect(incomplete_features)]
 
 use avian2d::prelude::*;
 use bevy::{
@@ -14,6 +16,7 @@ mod battle;
 mod battle_specifics;
 mod fabrik;
 mod input;
+mod splat;
 mod text;
 
 fn main() -> AppExit {

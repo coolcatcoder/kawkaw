@@ -88,18 +88,6 @@ impl Input {
         }
     }
 
-    #[deprecated]
-    pub fn pressed_old(&self, key_code: KeyCode) -> bool {
-        self.pressed.contains(&InputSource::KeyCode(key_code))
-    }
-
-    pub fn bind<T: ActionTemplate>(&mut self, index: u8, input_source: impl Into<InputSource>) {
-        self.bindings
-            .entry((TypeId::of::<T>(), index))
-            .or_default()
-            .push(input_source.into());
-    }
-
     pub fn pressed<T: ActionTemplate>(&self) -> bool {
         T::Template::pressed(|i| {
             self.bindings
@@ -176,6 +164,31 @@ impl<T: Action> ActionTemplate for T {
     type Template = Self;
 }
 
+#[allow(unexpected_cfgs)]
+impl Input {
+    #[cfg(not(rust_analyzer))]
+    pub fn bind<T: ActionTemplate>(&mut self, #[rustc_splat] binding: impl Binding<T::Template>) {
+        binding.bind(|index, input_source| {
+            self.bindings
+                .entry((TypeId::of::<T>(), index))
+                .or_default()
+                .push(input_source);
+        });
+    }
+
+    #[cfg(rust_analyzer)]
+    pub extern "c" fn bind<T: ActionTemplate>(&mut self, mut args: ...);
+}
+
+pub trait Binding<T>: Sized {
+    fn bind(self, mut single_bind: impl FnMut(u8, InputSource));
+}
+impl<T, I: Into<InputSource>> Binding<T> for (u8, I) {
+    fn bind(self, mut single_bind: impl FnMut(u8, InputSource)) {
+        single_bind(self.0, self.1.into());
+    }
+}
+
 fn bindings(mut input: ResMut<Input>) {
     input.bind::<UiMove>(0, KeyCode::KeyA);
     input.bind::<UiMove>(1, KeyCode::KeyD);
@@ -191,17 +204,60 @@ fn bindings(mut input: ResMut<Input>) {
     input.bind::<SoulMove>(2, InputSource::GamepadAxisPositive(GamepadAxis::LeftStickX));
     input.bind::<SoulMove>(3, InputSource::GamepadAxisNegative(GamepadAxis::LeftStickY));
 
-    input.bind::<SoulMove>(0, KeyCode::KeyW);
-    input.bind::<SoulMove>(1, KeyCode::KeyA);
-    input.bind::<SoulMove>(2, KeyCode::KeyD);
-    input.bind::<SoulMove>(3, KeyCode::KeyS);
+    input.bind::<SoulMove>(Wasd);
+    input.bind::<SoulMove>(DPad);
 
-    input.bind::<SoulMove>(0, GamepadButton::DPadUp);
-    input.bind::<SoulMove>(1, GamepadButton::DPadLeft);
-    input.bind::<SoulMove>(2, GamepadButton::DPadRight);
-    input.bind::<SoulMove>(3, GamepadButton::DPadDown);
+    input.bind::<Confirm>(KeyCode::Enter);
 }
 
+struct Wasd;
+impl From<Wasd> for [InputSource; 4] {
+    fn from(_: Wasd) -> Self {
+        [
+            InputSource::KeyCode(KeyCode::KeyW),
+            InputSource::KeyCode(KeyCode::KeyA),
+            InputSource::KeyCode(KeyCode::KeyD),
+            InputSource::KeyCode(KeyCode::KeyS),
+        ]
+    }
+}
+
+struct DPad;
+impl From<DPad> for [InputSource; 4] {
+    fn from(_: DPad) -> Self {
+        [
+            InputSource::GamepadButton(GamepadButton::DPadUp),
+            InputSource::GamepadButton(GamepadButton::DPadLeft),
+            InputSource::GamepadButton(GamepadButton::DPadRight),
+            InputSource::GamepadButton(GamepadButton::DPadDown),
+        ]
+    }
+}
+
+impl<T: Into<InputSource>> Binding<bool> for (T,) {
+    fn bind(self, mut single_bind: impl FnMut(u8, InputSource)) {
+        single_bind(0, self.0.into());
+    }
+}
+impl Action for bool {
+    type Output = Self;
+
+    fn pressed(mut check: impl FnMut(u8) -> bool) -> bool {
+        check(0)
+    }
+
+    fn held(mut check: impl FnMut(u8) -> Option<f32>) -> Self::Output {
+        check(0).is_some()
+    }
+}
+
+impl<T: Into<[InputSource; 4]>> Binding<Vec2> for (T,) {
+    fn bind(self, mut single_bind: impl FnMut(u8, InputSource)) {
+        for (index, input_source) in self.0.into().into_iter().enumerate() {
+            single_bind(index.strict_cast(), input_source);
+        }
+    }
+}
 impl Action for Vec2 {
     type Output = Self;
 
@@ -253,4 +309,9 @@ impl Action for UiMove {
 pub struct SoulMove;
 impl ActionTemplate for SoulMove {
     type Template = Vec2;
+}
+
+pub struct Confirm;
+impl ActionTemplate for Confirm {
+    type Template = bool;
 }

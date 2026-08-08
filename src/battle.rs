@@ -10,7 +10,7 @@ use crate::{
         character::{Characters, SlotMessage},
         draw::Draw,
     },
-    input::{Input, UiMove},
+    input::{Confirm, Input, UiMove},
 };
 
 use avian2d::prelude::*;
@@ -121,18 +121,17 @@ fn update_ui(
         } => {
             if input.pressed::<UiMove>() {
                 audio_message.write(AudioMessage::Sound("snd_menumove_stereo.wav", default()));
-                info!("Held = {:?}", input.held::<UiMove>());
+
                 behaviour_message.write(BehaviourMessage::Lowlight(menu_hovered));
 
                 menu_hovered = (menu_hovered as i8 + input.held::<UiMove>() as i8)
                     .rem_euclid(5)
                     .strict_cast();
-                info!("{menu_hovered}");
 
                 behaviour_message.write(BehaviourMessage::Highlight(menu_hovered));
             }
 
-            if input.pressed_old(KeyCode::Enter) {
+            if input.pressed::<Confirm>() {
                 audio_message.write(AudioMessage::Sound("snd_select.wav", default()));
                 character += 1;
                 menu_hovered = 0;
